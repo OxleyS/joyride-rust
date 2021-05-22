@@ -1,0 +1,11 @@
+[package]
+name = "joyride_rust"
+version = "0.1.0"
+authors = ["Sean <13091705+OxleyS@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = { git = "https://github.com/bevyengine/bevy", rev = "883abbb27a9fbc86df664f2e49fc600306327d44" }
+bevy_kira_audio = { git = "https://github.com/OxleyS/bevy_kira_audio", rev = "8af7b4c22f2a6ecf2d406540b507f13f66b2a7e7", features = ["mp3"] }

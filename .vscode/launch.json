@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "run output binary",
+            "program": "${workspaceFolder}\\target\\debug\\joyride_rust.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "CARGO_MANIFEST_DIR",
+                    "value": "${workspaceFolder}"
+                }
+            ],
+            "sourceFileMap": {},
+        }
+    ]
+}
