@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use road::add_road_update_systems;
 
-const WINDOW_WIDTH: f32 = 640.0;
-const WINDOW_HEIGHT: f32 = 480.0;
+const WINDOW_WIDTH: f32 = 800.0;
+const WINDOW_HEIGHT: f32 = 600.0;
 
 mod joyride;
 mod road;
