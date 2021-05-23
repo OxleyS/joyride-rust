@@ -10,3 +10,4 @@ edition = "2018"
 bevy = { git = "https://github.com/bevyengine/bevy", rev = "883abbb27a9fbc86df664f2e49fc600306327d44" }
 bevy_kira_audio = { git = "https://github.com/OxleyS/bevy_kira_audio", rev = "8af7b4c22f2a6ecf2d406540b507f13f66b2a7e7", features = ["mp3"] }
 easy-cast = "0.4.4"
+lebe = "0.5.1"

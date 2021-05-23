@@ -7,6 +7,7 @@ use bevy::{
 };
 use core::mem::size_of;
 use easy_cast::*;
+use lebe::Endian;
 
 // The number of pixel lines our coordinate maps stretch for, from the bottom of the screen
 const ROAD_DISTANCE: usize = 110;
@@ -58,6 +59,7 @@ struct RoadDynamic {
 }
 
 struct RoadDrawing {
+    // Colors are expected to be RGBA
     draw_buffer: Box<[u32; NUM_ROAD_PIXELS]>,
 }
 
@@ -113,9 +115,9 @@ fn build_road_static(textures: &mut ResMut<Assets<Texture>>) -> RoadStatic {
 
     let colors = RoadColors {
         center_line: 0xFFFFFFFFu32,
-        offroad: ShiftableColor(0xFF91FFFFu32, 0xFF91DADAu32),
+        offroad: ShiftableColor(0xFFFF91FFu32, 0xDADA91FFu32),
         rumble_strip: ShiftableColor(0xFFFFFFFF, 0xFF0000FF),
-        pavement: ShiftableColor(0xFF303030, 0xFF333333),
+        pavement: ShiftableColor(0x303030FF, 0x333333FF),
     };
 
     RoadStatic {
@@ -229,7 +231,7 @@ fn render_road(
             } else {
                 shiftable.0
             };
-            *px = color;
+            *px = color.from_current_into_big_endian();
         }
 
         flt_map_idx += 1.0;
