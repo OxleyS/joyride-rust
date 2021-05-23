@@ -7,8 +7,12 @@
 			"problemMatcher": [
 				"$rustc"
 			],
+			"args": [
+				"--features",
+				"dev"
+			],
 			"group": "build",
-			"label": "rust: cargo build"
-		}
+			"label": "rust: cargo build dev"
+		},
 	]
 }
