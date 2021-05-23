@@ -1,0 +1,1 @@
+- A lot of the build configuration code is pulled from https://github.com/NiklasEi/bevy_game_template
