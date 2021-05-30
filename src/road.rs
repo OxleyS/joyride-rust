@@ -18,7 +18,7 @@ pub enum RoadStageLabels {
 const ROAD_SPRITE_Z: f32 = 1.0;
 
 // The number of pixel lines our coordinate maps stretch for, from the bottom of the screen
-const ROAD_DISTANCE: usize = 110;
+pub const ROAD_DISTANCE: usize = 110;
 
 // Uphills move through the coordinate maps slower than one entry per pixel line.
 // This specifies the maximum on-screen height the drawn road can be
@@ -137,12 +137,11 @@ pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .label(RoadStageLabels::UpdateRoadTables),
         )
-        .with_system(
-            render_road
-                .system()
-                .after(RoadStageLabels::UpdateRoadTables),
-        )
         .with_system(test_curve_road.system())
+}
+
+pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
+    system_set.with_system(render_road.system())
 }
 
 fn build_road_static(

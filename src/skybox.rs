@@ -1,10 +1,13 @@
 use bevy::prelude::*;
 use easy_cast::*;
 
-use crate::road::{RoadDynamic, RoadStageLabels};
+use crate::road::{RoadDynamic, RoadStageLabels, ROAD_DISTANCE};
 
 // Used for layering with other sprites
 const SKYBOX_SPRITE_Z: f32 = 0.0;
+
+// How quickly the skybox scrolls downward when the road goes uphill
+const SKYBOX_UPHILL_SCROLL_SCALAR: f32 = 0.3;
 
 struct Skybox {
     tex: Handle<Texture>,
@@ -36,14 +39,13 @@ pub fn add_skybox_update_systems(system_set: SystemSet) -> SystemSet {
     )
 }
 
-// TODO: Ordering with road update
 fn reposition_skybox(
     skybox: Res<Skybox>,
     road_dyn: Option<Res<RoadDynamic>>,
     textures: Res<Assets<Texture>>,
     mut positioning: Query<(&mut Transform, &Sprite)>,
 ) {
-    // Do nothing if the skybox texture has not loaded yet
+    // Do nothing if the skybox texture has not loaded yet (we won't know its size)
     if textures.get(&skybox.tex).is_none() {
         return;
     }
@@ -58,10 +60,15 @@ fn reposition_skybox(
         Err(_) => return, // No-op if components are missing
     };
 
-    // TODO: Hide skybox over horizon if going uphill
-    // TODO: There seems to be some sort of mispositioning going on. The bug happens when hill intensity rapidly changes, and
-    // places the skybox one frame earlier than the road drawing fills the gap. Something out-of-step with a Bevy system?
+    // Hide skybox over horizon if going uphill
+    let y_offset = if road_draw_height < ROAD_DISTANCE {
+        let uphill_height: f32 = -f32::conv(ROAD_DISTANCE - road_draw_height);
+        uphill_height * SKYBOX_UPHILL_SCROLL_SCALAR
+    } else {
+        0.0
+    };
 
+    // Fit the skybox to match the height of the road
     let size = sprite.size;
-    xform.translation.y = f32::conv(road_draw_height - 1) + (size.y * 0.5);
+    xform.translation.y = f32::conv(road_draw_height - 1) + (size.y * 0.5) + y_offset;
 }
