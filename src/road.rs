@@ -28,11 +28,17 @@ const CAMERA_HEIGHT: f32 = 75.0;
 // To better communicate movement, we switch road colors at every interval of Z
 const COLOR_SWITCH_Z_INTERVAL: f32 = 0.5;
 
+// The length (in Z) of a single road segment
+const SEGMENT_LENGTH: f32 = 50.0;
+
 const PAVEMENT_WIDTH: f32 = 125.0;
 const CENTER_LINE_WIDTH: f32 = 2.0;
 const RUMBLE_STRIP_WIDTH: f32 = 20.0;
 
 const ROAD_NOT_INIT: &str = "Road was not initialized";
+
+// Debug flags
+const DEBUG_VIS_SEGMENTS: bool = false;
 
 #[derive(Clone, Copy)]
 struct ShiftableColor(u32, u32);
@@ -47,6 +53,7 @@ struct RoadColors {
 #[derive(Clone)]
 struct RoadSegment {
     curve: f32,
+    hill: f32,
 }
 
 struct RoadStatic {
@@ -57,12 +64,29 @@ struct RoadStatic {
 }
 
 struct RoadDynamic {
+    // Table of road X offsets. Affected by curvature
     x_map: Box<[f32; ROAD_DISTANCE]>,
+
+    // TODO: To be used with hills
     y_map: Box<[f32; ROAD_DISTANCE]>,
+
+    // TODO: Make static?
     sprite: Entity,
-    z_offset: f32,
-    active_segs: [RoadSegment; 2],
+
+    // The racer's offset from the center of the road
     x_offset: f32,
+
+    // Used to shift colors during road drawing
+    z_offset: f32,
+
+    // The index of the segment the racer is currently in
+    seg_idx: usize,
+
+    // Their Z position within that segment
+    seg_pos: f32,
+
+    // TODO: Move to static once we read segs from file
+    segs: Box<[RoadSegment]>,
 }
 
 struct RoadDrawing {
@@ -166,21 +190,51 @@ fn build_road_dynamic(
         x_map,
         y_map,
         sprite,
-        z_offset: 0.0,
-        active_segs: [RoadSegment { curve: 0.0 }, RoadSegment { curve: 0.0 }],
         x_offset: 0.0,
+        z_offset: 0.0,
+        seg_idx: 0,
+        seg_pos: 0.0,
+        segs: Box::new([
+            RoadSegment {
+                curve: 0.0,
+                hill: 0.0,
+            },
+            RoadSegment {
+                curve: 0.0,
+                hill: 0.0,
+            },
+        ]),
     }
 }
 
 fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>, time: Res<Time>) {
     let curve_amt = time.delta_seconds() * 0.25;
     let offset_amt = time.delta_seconds() * 60.0;
+    let pos_amt = time.delta_seconds() * 5.0;
 
     if input.pressed(KeyCode::A) {
-        road_dyn.active_segs[0].curve -= curve_amt;
+        road_dyn.segs[0].curve -= curve_amt;
     }
     if input.pressed(KeyCode::D) {
-        road_dyn.active_segs[0].curve += curve_amt;
+        road_dyn.segs[0].curve += curve_amt;
+    }
+    if input.pressed(KeyCode::J) {
+        road_dyn.segs[1].curve -= curve_amt;
+    }
+    if input.pressed(KeyCode::L) {
+        road_dyn.segs[1].curve += curve_amt;
+    }
+    if input.pressed(KeyCode::I) {
+        road_dyn.segs[1].hill -= curve_amt;
+    }
+    if input.pressed(KeyCode::K) {
+        road_dyn.segs[1].hill += curve_amt;
+    }
+    if input.pressed(KeyCode::W) {
+        road_dyn.seg_pos = f32::min(SEGMENT_LENGTH, road_dyn.seg_pos + pos_amt);
+    }
+    if input.pressed(KeyCode::S) {
+        road_dyn.seg_pos = f32::max(0.0, road_dyn.seg_pos - pos_amt);
     }
     if input.pressed(KeyCode::Left) {
         //road_dyn.active_segs[1].curve -= curve_amt;
@@ -192,22 +246,46 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
     }
 }
 
+fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
+    let actual_idx = usize::clamp(idx, 0, segs.len() - 1);
+    return segs[actual_idx].clone();
+}
+
 fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, time: Res<Time>) {
-    road_dyn.z_offset =
-        (road_dyn.z_offset + time.delta_seconds()) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+    let advance_amt = time.delta_seconds();
+
+    // Convert ResMut to a regular mutable reference - otherwise Rust can't properly split borrows
+    // between individual struct fields, and complains about multiple-borrow
+    let road_dyn: &mut RoadDynamic = &mut road_dyn;
+
+    road_dyn.z_offset = (road_dyn.z_offset + advance_amt) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
 
     let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
     let mut delta_x = 0.0;
-    let mut cur_seg = road_dyn.active_segs[0].clone();
-    for (i, out_x) in road_dyn.x_map.iter_mut().enumerate() {
-        // TODO: Select segment
 
-        let last_z_idx = if i == 0 { 0 } else { i - 1 };
-        let last_z = road_static.z_map[last_z_idx];
-        delta_x += cur_seg.curve * (road_static.z_map[i] - last_z);
+    let mut last_z = road_static.z_map[0];
+
+    let segs = &road_dyn.segs;
+    let mut seg_idx = road_dyn.seg_idx;
+    let mut seg_pos = road_dyn.seg_pos;
+    let mut cur_seg = get_bounded_seg(&road_dyn.segs, seg_idx);
+
+    for (i, out_x) in road_dyn.x_map.iter_mut().enumerate() {
+        let cur_z = road_static.z_map[i];
+        let delta_z = cur_z - last_z;
+
+        seg_pos += delta_z;
+        if seg_pos > SEGMENT_LENGTH {
+            seg_idx += 1;
+            cur_seg = get_bounded_seg(&segs, seg_idx);
+        }
+
+        delta_x += cur_seg.curve * delta_z;
 
         cur_x += delta_x;
         *out_x = cur_x;
+
+        last_z = cur_z;
     }
 }
 
@@ -250,6 +328,16 @@ fn render_road(
         let road_z = road_static.z_map[map_idx];
         let road_scale = road_static.scale_map[map_idx];
 
+        let is_seg_boundary = if DEBUG_VIS_SEGMENTS && map_idx > 0 {
+            let seg_num = usize::conv_trunc((road_z + road_dyn.seg_pos) / SEGMENT_LENGTH);
+            let last_seg_num = usize::conv_trunc(
+                (road_static.z_map[map_idx - 1] + road_dyn.seg_pos) / SEGMENT_LENGTH,
+            );
+            seg_num != last_seg_num
+        } else {
+            false
+        };
+
         // Switch the exact color used for each part of the road, based on Z
         let num_color_switches = i32::conv_trunc((road_z + z_offset) / COLOR_SWITCH_Z_INTERVAL);
         let shift_color = num_color_switches % 2 != 0;
@@ -278,7 +366,9 @@ fn render_road(
             };
 
             // Write the color
-            let color = if shift_color {
+            let color = if is_seg_boundary {
+                0x00FF00FF
+            } else if shift_color {
                 shiftable.1
             } else {
                 shiftable.0
