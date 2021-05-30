@@ -1,5 +1,5 @@
-use crate::boxed_array;
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
+use crate::{boxed_array, joyride};
 use bevy::{
     core::AsBytes,
     prelude::*,
@@ -8,6 +8,14 @@ use bevy::{
 use core::mem::size_of;
 use easy_cast::*;
 use lebe::Endian;
+
+#[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
+pub enum RoadStageLabels {
+    UpdateRoadTables,
+}
+
+// Used for layering with other sprites
+const ROAD_SPRITE_Z: f32 = 1.0;
 
 // The number of pixel lines our coordinate maps stretch for, from the bottom of the screen
 const ROAD_DISTANCE: usize = 110;
@@ -71,14 +79,18 @@ struct RoadStatic {
     z_map: Box<[f32; ROAD_DISTANCE]>,
     scale_map: Box<[f32; ROAD_DISTANCE]>,
     colors: RoadColors,
-    sprite: Entity,
+    road_sprite: Entity,
 }
 
-struct RoadDynamic {
+// TODO: Can we encapsulate better?
+pub struct RoadDynamic {
+    // The height that this road will take up on-screen when drawn
+    pub draw_height: usize,
+
     // Table of road X offsets. Affected by curvature
     x_map: Box<[f32; ROAD_DISTANCE]>,
 
-    // Table that affects the mapping of on-screen pixel lines to entries in the other road tables.
+    // Table that specifies how fast we advance in the road tables as we draw on-screen lines.
     // Affected by hills
     y_map: Box<[f32; ROAD_DISTANCE]>,
 
@@ -120,8 +132,16 @@ pub fn startup_road(
 
 pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
     system_set
-        .with_system(update_road.system())
-        .with_system(render_road.system())
+        .with_system(
+            update_road
+                .system()
+                .label(RoadStageLabels::UpdateRoadTables),
+        )
+        .with_system(
+            render_road
+                .system()
+                .after(RoadStageLabels::UpdateRoadTables),
+        )
         .with_system(test_curve_road.system())
 }
 
@@ -165,7 +185,7 @@ fn build_road_static(
     xform.translation = Vec3::new(
         (FIELD_WIDTH as f32) * 0.5,
         (MAX_ROAD_DRAW_HEIGHT as f32) * 0.5,
-        0.0,
+        ROAD_SPRITE_Z,
     );
 
     // Create a sprite to draw the road using the render texture
@@ -182,7 +202,7 @@ fn build_road_static(
         scale_map,
         render_tex: tex_handle.clone(),
         colors,
-        sprite,
+        road_sprite: sprite,
     }
 }
 
@@ -190,11 +210,12 @@ fn build_road_dynamic() -> RoadDynamic {
     let default_x = f32::conv(FIELD_WIDTH) * 0.5;
 
     let x_map = boxed_array![default_x; ROAD_DISTANCE];
-    let y_map = boxed_array![0.0; ROAD_DISTANCE];
+    let y_map = boxed_array![1.0; ROAD_DISTANCE];
 
     RoadDynamic {
         x_map,
         y_map,
+        draw_height: ROAD_DISTANCE,
         x_offset: 0.0,
         z_offset: 0.0,
         seg_idx: 0,
@@ -212,11 +233,12 @@ fn build_road_dynamic() -> RoadDynamic {
     }
 }
 
-fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>, time: Res<Time>) {
-    let curve_amt = time.delta_seconds() * 0.25;
-    let hill_amt = time.delta_seconds() * 0.0025;
-    let offset_amt = time.delta_seconds() * 60.0;
-    let pos_amt = time.delta_seconds() * 5.0;
+fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>) {
+    let curve_amt = joyride::TIME_STEP * 0.25;
+    //let hill_amt = joyride::TIME_STEP * 0.0025;
+    let hill_amt = joyride::TIME_STEP * 0.01;
+    let offset_amt = joyride::TIME_STEP * 60.0;
+    let pos_amt = joyride::TIME_STEP * 5.0;
 
     if input.pressed(KeyCode::A) {
         road_dyn.segs[0].curve -= curve_amt;
@@ -243,10 +265,10 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
         road_dyn.seg_pos = f32::max(0.0, road_dyn.seg_pos - pos_amt);
     }
     if input.pressed(KeyCode::Left) {
-        road_dyn.x_offset -= offset_amt;
+        road_dyn.x_offset += offset_amt;
     }
     if input.pressed(KeyCode::Right) {
-        road_dyn.x_offset += offset_amt;
+        road_dyn.x_offset -= offset_amt;
     }
 }
 
@@ -255,8 +277,8 @@ fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
     return segs[actual_idx].clone();
 }
 
-fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, time: Res<Time>) {
-    let advance_amt = time.delta_seconds();
+fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>) {
+    let advance_amt = joyride::TIME_STEP;
 
     // Convert ResMut to a regular mutable reference - otherwise Rust can't properly split borrows
     // between individual struct fields, and complains about multiple-borrow
@@ -265,7 +287,7 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
     road_dyn.z_offset = (road_dyn.z_offset + advance_amt) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
 
     let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
-    let mut cur_y = 0.0;
+    let mut cur_y = 1.0;
     let mut delta_x = 0.0;
     let mut delta_y = 0.0;
 
@@ -297,10 +319,24 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
         cur_x += delta_x;
         *out_x = cur_x + (cur_seg.curve * CURVE_COEFF.x);
         cur_y += delta_y + (cur_seg.hill * HILL_COEFF.x);
-        *out_y = f32::max(cur_y, -0.99999); // Clamp to ensure we always advance in the tables when drawing
+        *out_y = f32::max(cur_y, 0.00001); // Clamp to ensure we always advance in the tables when drawing
 
         last_z = cur_z;
     }
+
+    // TODO: Use when drawing?
+    let mut draw_height = MAX_ROAD_DRAW_HEIGHT;
+    let mut flt_map_idx = 0.0;
+    for cur_line in 0..MAX_ROAD_DRAW_HEIGHT {
+        let map_idx = usize::conv_trunc(flt_map_idx);
+        if map_idx >= ROAD_DISTANCE {
+            draw_height = cur_line;
+            break;
+        }
+        flt_map_idx += road_dyn.y_map[map_idx];
+    }
+
+    road_dyn.draw_height = draw_height;
 }
 
 fn render_road(
@@ -320,7 +356,7 @@ fn render_road(
     // This ensures the player is "looking down the road" at all times.
     // TODO: The divisor will need to match the actual draw distance when hills are a thing.
     // We'll need to calculate the final draw distance beforehand
-    let delta_x_offset = -x_offset / f32::conv(ROAD_DISTANCE);
+    let delta_x_offset = -x_offset / f32::conv(road_dyn.draw_height);
 
     // Draw line-by-line, starting from the bottom
     for cur_line in (0..MAX_ROAD_DRAW_HEIGHT).rev() {
@@ -390,7 +426,7 @@ fn render_road(
             *px = color.from_current_into_big_endian();
         }
 
-        flt_map_idx += 1.0 + road_dyn.y_map[map_idx];
+        flt_map_idx += road_dyn.y_map[map_idx];
         x_offset += delta_x_offset;
     }
 

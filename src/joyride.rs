@@ -3,6 +3,9 @@ use bevy::prelude::*;
 pub const FIELD_WIDTH: u32 = 320;
 pub const FIELD_HEIGHT: u32 = 240;
 
+// We lock the framerate, since this is a retro-style game, after all
+pub const TIME_STEP: f32 = 1.0 / 30.0;
+
 pub struct JoyrideGame {}
 
 pub fn startup_joyride(mut commands: Commands) {

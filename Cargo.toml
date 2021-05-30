@@ -12,6 +12,7 @@ default = [
     "bevy/bevy_gltf",
     "bevy/bevy_winit",
     "bevy/render",
+    "bevy/png",
 ]
 
 native = [
