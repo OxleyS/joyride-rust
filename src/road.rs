@@ -44,6 +44,11 @@ struct RoadColors {
     center_line: u32, // Shifts to match the pavement color
 }
 
+#[derive(Clone)]
+struct RoadSegment {
+    curve: f32,
+}
+
 struct RoadStatic {
     render_tex: Handle<Texture>,
     z_map: Box<[f32; ROAD_DISTANCE]>,
@@ -56,6 +61,8 @@ struct RoadDynamic {
     y_map: Box<[f32; ROAD_DISTANCE]>,
     sprite: Entity,
     z_offset: f32,
+    active_segs: [RoadSegment; 2],
+    x_offset: f32,
 }
 
 struct RoadDrawing {
@@ -86,6 +93,7 @@ pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
     system_set
         .with_system(update_road.system())
         .with_system(render_road.system())
+        .with_system(test_curve_road.system())
 }
 
 fn build_road_static(textures: &mut ResMut<Assets<Texture>>) -> RoadStatic {
@@ -159,12 +167,48 @@ fn build_road_dynamic(
         y_map,
         sprite,
         z_offset: 0.0,
+        active_segs: [RoadSegment { curve: 0.0 }, RoadSegment { curve: 0.0 }],
+        x_offset: 0.0,
     }
 }
 
-fn update_road(mut road_dyn: ResMut<RoadDynamic>, time: Res<Time>) {
+fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>, time: Res<Time>) {
+    let curve_amt = time.delta_seconds() * 0.25;
+    let offset_amt = time.delta_seconds() * 60.0;
+
+    if input.pressed(KeyCode::A) {
+        road_dyn.active_segs[0].curve -= curve_amt;
+    }
+    if input.pressed(KeyCode::D) {
+        road_dyn.active_segs[0].curve += curve_amt;
+    }
+    if input.pressed(KeyCode::Left) {
+        //road_dyn.active_segs[1].curve -= curve_amt;
+        road_dyn.x_offset -= offset_amt;
+    }
+    if input.pressed(KeyCode::Right) {
+        //road_dyn.active_segs[1].curve += curve_amt;
+        road_dyn.x_offset += offset_amt;
+    }
+}
+
+fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, time: Res<Time>) {
     road_dyn.z_offset =
         (road_dyn.z_offset + time.delta_seconds()) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+
+    let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
+    let mut delta_x = 0.0;
+    let mut cur_seg = road_dyn.active_segs[0].clone();
+    for (i, out_x) in road_dyn.x_map.iter_mut().enumerate() {
+        // TODO: Select segment
+
+        let last_z_idx = if i == 0 { 0 } else { i - 1 };
+        let last_z = road_static.z_map[last_z_idx];
+        delta_x += cur_seg.curve * (road_static.z_map[i] - last_z);
+
+        cur_x += delta_x;
+        *out_x = cur_x;
+    }
 }
 
 fn render_road(
@@ -177,6 +221,14 @@ fn render_road(
     let z_offset = road_dyn.z_offset;
     let field_width: usize = FIELD_WIDTH.cast();
     let colors = &road_static.colors;
+
+    let mut x_offset = road_dyn.x_offset;
+
+    // Assuming no curvature, focus the far end of the road to the center of the screen.
+    // This ensures the player is "looking down the road" at all times.
+    // TODO: The divisor will need to match the actual draw distance when hills are a thing.
+    // We'll need to calculate the final draw distance beforehand
+    let delta_x_offset = -x_offset / f32::conv(ROAD_DISTANCE);
 
     // Draw line-by-line, starting from the bottom
     for cur_line in (0..MAX_ROAD_DRAW_HEIGHT).rev() {
@@ -202,7 +254,7 @@ fn render_road(
         let num_color_switches = i32::conv_trunc((road_z + z_offset) / COLOR_SWITCH_Z_INTERVAL);
         let shift_color = num_color_switches % 2 != 0;
 
-        let road_center = road_dyn.x_map[map_idx];
+        let road_center = road_dyn.x_map[map_idx] + x_offset;
         let road_width = PAVEMENT_WIDTH * road_scale;
         let center_line_width = CENTER_LINE_WIDTH * road_scale;
         let rumble_width = RUMBLE_STRIP_WIDTH * road_scale;
@@ -235,6 +287,7 @@ fn render_road(
         }
 
         flt_map_idx += 1.0;
+        x_offset += delta_x_offset;
     }
 
     // Copy the pixel data to the texture
