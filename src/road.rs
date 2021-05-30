@@ -41,6 +41,16 @@ const ROAD_NOT_INIT: &str = "Road was not initialized";
 const DEBUG_VIS_SEGMENTS: bool = false;
 
 #[derive(Clone, Copy)]
+struct QuadraticCoefficients {
+    x2: f32,
+    x: f32,
+}
+
+// The road warps for curves or hills according to quadratic functions, with the segment's curve/hill value as X
+const CURVE_COEFF: QuadraticCoefficients = QuadraticCoefficients { x2: 1.0, x: 0.0 };
+const HILL_COEFF: QuadraticCoefficients = QuadraticCoefficients { x2: 0.5, x: 0.5 };
+
+#[derive(Clone, Copy)]
 struct ShiftableColor(u32, u32);
 
 struct RoadColors {
@@ -61,17 +71,16 @@ struct RoadStatic {
     z_map: Box<[f32; ROAD_DISTANCE]>,
     scale_map: Box<[f32; ROAD_DISTANCE]>,
     colors: RoadColors,
+    sprite: Entity,
 }
 
 struct RoadDynamic {
     // Table of road X offsets. Affected by curvature
     x_map: Box<[f32; ROAD_DISTANCE]>,
 
-    // TODO: To be used with hills
+    // Table that affects the mapping of on-screen pixel lines to entries in the other road tables.
+    // Affected by hills
     y_map: Box<[f32; ROAD_DISTANCE]>,
-
-    // TODO: Make static?
-    sprite: Entity,
 
     // The racer's offset from the center of the road
     x_offset: f32,
@@ -99,12 +108,8 @@ pub fn startup_road(
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let road_static = build_road_static(&mut textures);
-    let road_dynamic = build_road_dynamic(
-        &mut commands,
-        road_static.render_tex.clone(),
-        &mut materials,
-    );
+    let road_static = build_road_static(&mut commands, &mut textures, &mut materials);
+    let road_dynamic = build_road_dynamic();
 
     commands.insert_resource(road_static);
     commands.insert_resource(road_dynamic);
@@ -120,7 +125,11 @@ pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
         .with_system(test_curve_road.system())
 }
 
-fn build_road_static(textures: &mut ResMut<Assets<Texture>>) -> RoadStatic {
+fn build_road_static(
+    commands: &mut Commands,
+    textures: &mut ResMut<Assets<Texture>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) -> RoadStatic {
     // Create a texture that will be overwritten every frame
     let render_tex = Texture::new(
         Extent3d::new(FIELD_WIDTH.cast(), MAX_ROAD_DRAW_HEIGHT.cast(), 1),
@@ -152,19 +161,6 @@ fn build_road_static(textures: &mut ResMut<Assets<Texture>>) -> RoadStatic {
         pavement: ShiftableColor(0x303030FF, 0x333333FF),
     };
 
-    RoadStatic {
-        z_map,
-        scale_map,
-        render_tex: tex_handle.clone(),
-        colors,
-    }
-}
-
-fn build_road_dynamic(
-    commands: &mut Commands,
-    render_tex: Handle<Texture>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-) -> RoadDynamic {
     let mut xform = Transform::default();
     xform.translation = Vec3::new(
         (FIELD_WIDTH as f32) * 0.5,
@@ -175,12 +171,22 @@ fn build_road_dynamic(
     // Create a sprite to draw the road using the render texture
     let sprite = commands
         .spawn_bundle(SpriteBundle {
-            material: materials.add(render_tex.into()),
+            material: materials.add(tex_handle.clone().into()),
             transform: xform,
             ..Default::default()
         })
         .id();
 
+    RoadStatic {
+        z_map,
+        scale_map,
+        render_tex: tex_handle.clone(),
+        colors,
+        sprite,
+    }
+}
+
+fn build_road_dynamic() -> RoadDynamic {
     let default_x = f32::conv(FIELD_WIDTH) * 0.5;
 
     let x_map = boxed_array![default_x; ROAD_DISTANCE];
@@ -189,7 +195,6 @@ fn build_road_dynamic(
     RoadDynamic {
         x_map,
         y_map,
-        sprite,
         x_offset: 0.0,
         z_offset: 0.0,
         seg_idx: 0,
@@ -209,6 +214,7 @@ fn build_road_dynamic(
 
 fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>, time: Res<Time>) {
     let curve_amt = time.delta_seconds() * 0.25;
+    let hill_amt = time.delta_seconds() * 0.0025;
     let offset_amt = time.delta_seconds() * 60.0;
     let pos_amt = time.delta_seconds() * 5.0;
 
@@ -225,10 +231,10 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
         road_dyn.segs[1].curve += curve_amt;
     }
     if input.pressed(KeyCode::I) {
-        road_dyn.segs[1].hill -= curve_amt;
+        road_dyn.segs[0].hill -= hill_amt;
     }
     if input.pressed(KeyCode::K) {
-        road_dyn.segs[1].hill += curve_amt;
+        road_dyn.segs[0].hill += hill_amt;
     }
     if input.pressed(KeyCode::W) {
         road_dyn.seg_pos = f32::min(SEGMENT_LENGTH, road_dyn.seg_pos + pos_amt);
@@ -261,7 +267,9 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
     road_dyn.z_offset = (road_dyn.z_offset + advance_amt) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
 
     let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
+    let mut cur_y = 0.0;
     let mut delta_x = 0.0;
+    let mut delta_y = 0.0;
 
     let mut last_z = road_static.z_map[0];
 
@@ -270,7 +278,14 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
     let mut seg_pos = road_dyn.seg_pos;
     let mut cur_seg = get_bounded_seg(&road_dyn.segs, seg_idx);
 
-    for (i, out_x) in road_dyn.x_map.iter_mut().enumerate() {
+    println!("{}, {}", cur_seg.curve, cur_seg.hill);
+
+    for (i, (out_x, out_y)) in road_dyn
+        .x_map
+        .iter_mut()
+        .zip(road_dyn.y_map.iter_mut())
+        .enumerate()
+    {
         let cur_z = road_static.z_map[i];
         let delta_z = cur_z - last_z;
 
@@ -280,10 +295,13 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
             cur_seg = get_bounded_seg(&segs, seg_idx);
         }
 
-        delta_x += cur_seg.curve * delta_z;
+        delta_x += (cur_seg.curve * CURVE_COEFF.x2) * delta_z;
+        delta_y += (cur_seg.hill * HILL_COEFF.x2) * delta_z;
 
         cur_x += delta_x;
-        *out_x = cur_x;
+        *out_x = cur_x + (cur_seg.curve * CURVE_COEFF.x);
+        cur_y += delta_y + (cur_seg.hill * HILL_COEFF.x);
+        *out_y = f32::max(cur_y, -0.99999); // Clamp to ensure we always advance in the tables when drawing
 
         last_z = cur_z;
     }
@@ -376,7 +394,7 @@ fn render_road(
             *px = color.from_current_into_big_endian();
         }
 
-        flt_map_idx += 1.0;
+        flt_map_idx += 1.0 + road_dyn.y_map[map_idx];
         x_offset += delta_x_offset;
     }
 
