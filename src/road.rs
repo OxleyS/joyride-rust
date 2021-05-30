@@ -243,11 +243,9 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
         road_dyn.seg_pos = f32::max(0.0, road_dyn.seg_pos - pos_amt);
     }
     if input.pressed(KeyCode::Left) {
-        //road_dyn.active_segs[1].curve -= curve_amt;
         road_dyn.x_offset -= offset_amt;
     }
     if input.pressed(KeyCode::Right) {
-        //road_dyn.active_segs[1].curve += curve_amt;
         road_dyn.x_offset += offset_amt;
     }
 }
@@ -277,8 +275,6 @@ fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>, 
     let mut seg_idx = road_dyn.seg_idx;
     let mut seg_pos = road_dyn.seg_pos;
     let mut cur_seg = get_bounded_seg(&road_dyn.segs, seg_idx);
-
-    println!("{}, {}", cur_seg.curve, cur_seg.hill);
 
     for (i, (out_x, out_y)) in road_dyn
         .x_map
