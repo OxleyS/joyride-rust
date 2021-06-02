@@ -131,13 +131,12 @@ pub fn startup_road(
 }
 
 pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set
-        .with_system(
-            update_road
-                .system()
-                .label(RoadStageLabels::UpdateRoadTables),
-        )
-        .with_system(test_curve_road.system())
+    system_set.with_system(
+        update_road
+            .system()
+            .label(RoadStageLabels::UpdateRoadTables),
+    )
+    //.with_system(test_curve_road.system())
 }
 
 pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
