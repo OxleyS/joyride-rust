@@ -15,11 +15,12 @@ pub enum PlayerStageLabels {
 
 struct Player {
     turn_rate: f32,
+    is_braking: bool,
     speed: f32,
     bike_ent: Entity,
 
     tire_ent: Entity,
-    //light_ent: Entity,
+    brake_light_ent: Entity,
 }
 
 enum TireCyclePosition {
@@ -114,6 +115,9 @@ const TIRE_OFFSETS: [TireCycleLodLevel; NUM_RACER_LODS] = [
     ]),
 ];
 
+// No cycle or LOD to worry about, unlike tires
+const BRAKE_LIGHT_OFFSETS: [(i32, i32); 4] = [(0, 23), (-2, 22), (-4, 19), (0, 16)];
+
 const NUM_RACER_LODS: usize = 4;
 
 const NUM_TURN_LEVELS: usize = 4;
@@ -123,6 +127,7 @@ const MAX_TURBO_SPEED: f32 = 8.11;
 
 const BIKE_SPRITE_Z: f32 = 3.0;
 const TIRE_SPRITE_Z: f32 = 3.1;
+const BRAKE_LIGHT_SPRITE_Z: f32 = 3.1;
 
 const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
@@ -132,6 +137,11 @@ const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 const TIRE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 16,
     rows: 4,
+    columns: 4,
+};
+const BRAKE_LIGHT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
+    tile_size: 16,
+    rows: 1,
     columns: 4,
 };
 
@@ -146,6 +156,8 @@ pub fn startup_player(
     let bike_atlas = BIKE_SPRITE_DESC.make_atlas(bike_tex);
     let tire_tex = asset_server.load("textures/tire_atlas.png");
     let tire_atlas = TIRE_SPRITE_DESC.make_atlas(tire_tex);
+    let brake_light_tex = asset_server.load("textures/brake_light_atlas.png");
+    let brake_light_atlas = BRAKE_LIGHT_SPRITE_DESC.make_atlas(brake_light_tex);
 
     let bike_xform = Transform::from_translation(Vec3::new(
         f32::conv(FIELD_WIDTH) * 0.5,
@@ -156,7 +168,6 @@ pub fn startup_player(
     let bike_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(bike_atlas),
-            sprite: TextureAtlasSprite::default(),
             transform: bike_xform,
             ..Default::default()
         })
@@ -171,7 +182,6 @@ pub fn startup_player(
     let tire_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(tire_atlas),
-            sprite: TextureAtlasSprite::default(),
             transform: tire_xform,
             ..Default::default()
         })
@@ -181,11 +191,26 @@ pub fn startup_player(
         .insert(Timer::from_seconds(0.1, false))
         .id();
 
+    let brake_light_xform = Transform::from_translation(Vec3::new(
+        f32::conv(FIELD_WIDTH) * 0.5,
+        f32::conv(BRAKE_LIGHT_SPRITE_DESC.tile_size) * 0.5,
+        BRAKE_LIGHT_SPRITE_Z,
+    ));
+    let brake_light_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: texture_atlases.add(brake_light_atlas),
+            transform: brake_light_xform,
+            ..Default::default()
+        })
+        .id();
+
     commands.insert_resource(Player {
         turn_rate: 0.0,
+        is_braking: false,
         speed: 0.0,
         bike_ent,
         tire_ent,
+        brake_light_ent,
     })
 }
 
@@ -197,6 +222,11 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .label(PlayerStageLabels::UpdatePlayerState),
         )
         .with_system(
+            update_player_state
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
+        .with_system(
             update_bike_sprites
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
@@ -206,6 +236,15 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
+        .with_system(
+            update_brake_lights
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
+}
+
+fn update_player_state(mut player: ResMut<Player>, input: Res<JoyrideInput>) {
+    player.is_braking = input.brake == JoyrideInputState::Pressed;
 }
 
 fn update_bike_sprites(
@@ -260,6 +299,30 @@ fn update_tires(
 
     xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(tire_cycle.0);
     xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(tire_cycle.1);
+}
+
+// TODO: We should make an overlay component or something, there's also sand blasts and smoke
+fn update_brake_lights(
+    player: Res<Player>,
+    mut query: Query<(&mut Transform, &mut TextureAtlasSprite, &mut Visible)>,
+) {
+    let RacerSpriteParams { sprite_x, flip_x } = get_turning_sprite_desc(player.turn_rate);
+    let (mut xform, mut sprite, mut visible) = query
+        .get_mut(player.brake_light_ent)
+        .expect(PLAYER_NOT_INIT);
+
+    let mut light_offset = BRAKE_LIGHT_OFFSETS[sprite_x as usize];
+    if flip_x {
+        light_offset.0 = -light_offset.0
+    };
+    sprite.flip_x = flip_x;
+
+    sprite.index = BRAKE_LIGHT_SPRITE_DESC.get_sprite_index(sprite_x, 0);
+
+    xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(light_offset.0);
+    xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(light_offset.1);
+
+    visible.is_visible = player.is_braking;
 }
 
 fn test_modify_player(input: Res<JoyrideInput>, mut player: ResMut<Player>) {
