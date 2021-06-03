@@ -21,6 +21,7 @@ mod util;
 fn main() {
     let mut app_builder = App::build();
 
+    // TODO: Refactor all this stuff to work like in joyride.rs
     let mut ingame_update_set =
         SystemSet::new().with_run_criteria(FixedTimestep::step(joyride::TIME_STEP.cast()));
     ingame_update_set = add_road_update_systems(ingame_update_set);
@@ -44,12 +45,13 @@ fn main() {
         })
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .add_plugins(DefaultPlugins)
-        .add_startup_system(joyride::startup_joyride.system())
         .add_startup_system(skybox::startup_skybox.system())
         .add_startup_system(road::startup_road.system())
         .add_startup_system(player::startup_player.system())
         .add_system_set(ingame_update_set)
         .add_system_set_to_stage(CoreStage::PostUpdate, ingame_render_set);
+
+    joyride::build_app(&mut app_builder);
 
     #[cfg(target_arch = "wasm32")]
     app_builder.add_plugin(bevy_webgl2::WebGL2Plugin);

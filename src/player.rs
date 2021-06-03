@@ -4,9 +4,14 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
-    joyride::{FIELD_WIDTH, TIME_STEP},
+    joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     util::SpriteGridDesc,
 };
+
+#[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
+pub enum PlayerStageLabels {
+    UpdatePlayerState,
+}
 
 struct Player {
     turn_rate: f32,
@@ -186,8 +191,21 @@ pub fn startup_player(
 
 pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
     system_set
-        .with_system(update_bike_sprites.system())
-        .with_system(update_tires.system())
+        .with_system(
+            test_modify_player
+                .system()
+                .label(PlayerStageLabels::UpdatePlayerState),
+        )
+        .with_system(
+            update_bike_sprites
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
+        .with_system(
+            update_tires
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
 }
 
 fn update_bike_sprites(
@@ -199,6 +217,10 @@ fn update_bike_sprites(
     let (_, mut sprite) = query.get_mut(player.bike_ent).expect(PLAYER_NOT_INIT);
     let sprite_y = if flip_x { 1 } else { 0 }; // TODO: Actually flip the sprite instead?
     sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+    println!(
+        "{}, {}, {}, {}",
+        player.turn_rate, sprite_x, sprite_y, sprite.index
+    );
 }
 
 fn update_tires(
@@ -236,11 +258,23 @@ fn update_tires(
     if flip_x {
         tire_cycle.0 = -tire_cycle.0
     };
+    sprite.flip_x = flip_x;
 
     sprite.index = TIRE_SPRITE_DESC.get_sprite_index(sprite_x, 0);
 
     xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(tire_cycle.0);
     xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(tire_cycle.1);
+}
+
+fn test_modify_player(input: Res<JoyrideInput>, mut player: ResMut<Player>) {
+    if input.left == JoyrideInputState::JustPressed {
+        println!("Just pressed A");
+        player.turn_rate = f32::max(player.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
+    }
+    if input.right == JoyrideInputState::JustPressed {
+        println!("Just pressed D");
+        player.turn_rate = f32::min(player.turn_rate + MAX_TURN_RATE / 4.0, MAX_TURN_RATE);
+    }
 }
 
 struct RacerSpriteParams {
@@ -250,12 +284,12 @@ struct RacerSpriteParams {
 
 fn get_turning_sprite_desc(turn_rate: f32) -> RacerSpriteParams {
     let turn_div = turn_rate / (MAX_TURN_RATE / f32::conv(NUM_TURN_LEVELS));
-    let turn_div_trunc = i32::conv_trunc(turn_div).abs();
-    let sprite_x = u32::min(3, u32::conv(turn_div_trunc));
+    let turn_div_trunc = i32::conv_trunc(turn_div);
+    let sprite_x = u32::min(3, u32::conv(turn_div_trunc.abs()));
 
     RacerSpriteParams {
         sprite_x,
-        flip_x: turn_rate > 0.0,
+        flip_x: turn_div_trunc >= 0,
     }
 }
 

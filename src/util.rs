@@ -31,7 +31,7 @@ pub struct SpriteGridDesc {
 
 impl SpriteGridDesc {
     pub fn get_sprite_index(&self, x: u32, y: u32) -> u32 {
-        return (x * self.columns) + y;
+        return (y * self.columns) + x;
     }
 
     pub fn make_atlas(&self, texture: Handle<Texture>) -> TextureAtlas {
