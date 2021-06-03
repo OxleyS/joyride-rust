@@ -217,10 +217,6 @@ fn update_bike_sprites(
     let (_, mut sprite) = query.get_mut(player.bike_ent).expect(PLAYER_NOT_INIT);
     let sprite_y = if flip_x { 1 } else { 0 }; // TODO: Actually flip the sprite instead?
     sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
-    println!(
-        "{}, {}, {}, {}",
-        player.turn_rate, sprite_x, sprite_y, sprite.index
-    );
 }
 
 fn update_tires(
@@ -268,11 +264,9 @@ fn update_tires(
 
 fn test_modify_player(input: Res<JoyrideInput>, mut player: ResMut<Player>) {
     if input.left == JoyrideInputState::JustPressed {
-        println!("Just pressed A");
         player.turn_rate = f32::max(player.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
     }
     if input.right == JoyrideInputState::JustPressed {
-        println!("Just pressed D");
         player.turn_rate = f32::min(player.turn_rate + MAX_TURN_RATE / 4.0, MAX_TURN_RATE);
     }
 }
