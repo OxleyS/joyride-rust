@@ -37,100 +37,29 @@ struct RacerOverlay {
 
 struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
 
-enum TireCyclePosition {
-    Up,
-    Down,
-}
-
-struct Tire {
-    cycle_pos: TireCyclePosition,
-}
-
-#[derive(Clone, Copy)]
-struct TireCycle {
-    up: (i32, i32),
-    down: (i32, i32),
-}
-
-struct TireCycleLodLevel([TireCycle; NUM_TURN_LEVELS]);
-
-const TIRE_OFFSETS: [TireCycleLodLevel; NUM_RACER_LODS] = [
-    TireCycleLodLevel([
-        TireCycle {
-            up: (0, 8),
-            down: (0, 5),
-        },
-        TireCycle {
-            up: (1, 8),
-            down: (2, 5),
-        },
-        TireCycle {
-            up: (3, 7),
-            down: (6, 3),
-        },
-        TireCycle {
-            up: (10, 5),
-            down: (12, 3),
-        },
-    ]),
-    TireCycleLodLevel([
-        TireCycle {
-            up: (0, 6),
-            down: (0, 3),
-        },
-        TireCycle {
-            up: (0, 5),
-            down: (2, 2),
-        },
-        TireCycle {
-            up: (3, 5),
-            down: (5, 2),
-        },
-        TireCycle {
-            up: (8, 3),
-            down: (12, 0),
-        },
-    ]),
-    TireCycleLodLevel([
-        TireCycle {
-            up: (1, 4),
-            down: (1, 2),
-        },
-        TireCycle {
-            up: (1, 3),
-            down: (2, 1),
-        },
-        TireCycle {
-            up: (2, 2),
-            down: (3, 0),
-        },
-        TireCycle {
-            up: (6, 2),
-            down: (9, -1),
-        },
-    ]),
-    TireCycleLodLevel([
-        TireCycle {
-            up: (1, 1),
-            down: (1, 0),
-        },
-        TireCycle {
-            up: (-1, 1),
-            down: (0, -1),
-        },
-        TireCycle {
-            up: (4, 0),
-            down: (5, -2),
-        },
-        TireCycle {
-            up: (7, 0),
-            down: (9, -2),
-        },
-    ]),
+const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
+    // LOD level 0
+    // Up cycle
+    OverlayOffsets([(0, 8), (1, 8), (3, 7), (10, 5)]),
+    // Down cycle
+    OverlayOffsets([(0, 5), (2, 5), (6, 3), (12, 3)]),
+    // LOD level 1
+    // Up cycle
+    OverlayOffsets([(0, 6), (0, 5), (3, 5), (8, 3)]),
+    // Down cycle
+    OverlayOffsets([(0, 3), (2, 2), (5, 2), (12, 0)]),
+    // LOD level 2
+    // Up cycle
+    OverlayOffsets([(1, 4), (1, 3), (2, 2), (6, 2)]),
+    // Down cycle
+    OverlayOffsets([(1, 2), (2, 1), (3, 0), (9, -1)]),
+    // LOD level 3
+    // Up cycle
+    OverlayOffsets([(1, 1), (-1, 1), (4, 0), (7, 0)]),
+    OverlayOffsets([(1, 0), (0, -1), (5, -2), (9, -2)]),
 ];
 
 // No cycle or LOD to worry about, unlike tires
-//const BRAKE_LIGHT_OFFSETS: [(i32, i32); 4] = [(0, 23), (-2, 22), (-4, 19), (0, 16)];
 const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
     [OverlayOffsets([(0, 23), (-2, 22), (-4, 19), (0, 16)])];
 
@@ -201,10 +130,14 @@ pub fn startup_player(
             transform: tire_xform,
             ..Default::default()
         })
-        .insert(Tire {
-            cycle_pos: TireCyclePosition::Up,
-        })
         .insert(Timer::from_seconds(0.1, false))
+        .insert(RacerOverlay {
+            num_lod_levels: 4,
+            offset_cycle_length: 2,
+            offset_cycle_pos: 0,
+            offset_table: &TIRE_OFFSETS,
+            sprite_desc: &TIRE_SPRITE_DESC,
+        })
         .id();
 
     let brake_light_xform = Transform::from_translation(Vec3::new(
@@ -287,47 +220,17 @@ fn update_bike_sprites(
     sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
 }
 
-fn update_tires(
-    player: Res<Player>,
-    mut query: Query<(
-        &mut Transform,
-        &mut TextureAtlasSprite,
-        &mut Tire,
-        &mut Timer,
-    )>,
-) {
-    let RacerSpriteParams { sprite_x, flip_x } = get_turning_sprite_desc(player.turn_rate);
-    let (mut xform, mut sprite, mut tire, mut timer) =
-        query.get_mut(player.tire_ent).expect(PLAYER_NOT_INIT);
+fn update_tires(player: Res<Player>, mut query: Query<(&mut RacerOverlay, &mut Timer)>) {
+    let (mut overlay, mut timer) = query.get_mut(player.tire_ent).expect(PLAYER_NOT_INIT);
 
     timer.tick(Duration::from_secs_f32(TIME_STEP));
     if timer.finished() {
-        tire.cycle_pos = match tire.cycle_pos {
-            TireCyclePosition::Down => TireCyclePosition::Up,
-            TireCyclePosition::Up => TireCyclePosition::Down,
-        };
+        overlay.offset_cycle_pos = (overlay.offset_cycle_pos + 1) % overlay.offset_cycle_length;
 
         let new_secs = get_tire_cycle_seconds(player.speed);
         timer.set_duration(Duration::from_secs_f32(new_secs));
         timer.reset();
     }
-
-    let tire_lod = &TIRE_OFFSETS[0];
-    let tire_offset = tire_lod.0[sprite_x as usize];
-    let mut tire_cycle = match tire.cycle_pos {
-        TireCyclePosition::Down => tire_offset.down,
-        TireCyclePosition::Up => tire_offset.up,
-    };
-
-    if flip_x {
-        tire_cycle.0 = -tire_cycle.0
-    };
-    sprite.flip_x = flip_x;
-
-    sprite.index = TIRE_SPRITE_DESC.get_sprite_index(sprite_x, 0);
-
-    xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(tire_cycle.0);
-    xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(tire_cycle.1);
 }
 
 // TODO: We should make an overlay component or something, there's also sand blasts, smoke, and boost flare
@@ -345,7 +248,7 @@ fn update_racer_offsets(
 ) {
     let RacerSpriteParams { sprite_x, flip_x } = get_turning_sprite_desc(player.turn_rate);
     for (overlay, mut sprite, mut xform) in query.iter_mut() {
-        let lod_idx = u8::max(player.lod_level, overlay.num_lod_levels - 1);
+        let lod_idx = u8::min(player.lod_level, overlay.num_lod_levels - 1);
         let offsets_idx = (overlay.offset_cycle_length * lod_idx) + overlay.offset_cycle_pos;
 
         let offsets = &overlay.offset_table[offsets_idx as usize];
