@@ -18,10 +18,24 @@ struct Player {
     is_braking: bool,
     speed: f32,
     bike_ent: Entity,
+    lod_level: u8,
 
     tire_ent: Entity,
     brake_light_ent: Entity,
 }
+
+struct RacerOverlay {
+    pub offset_cycle_pos: u8,
+
+    pub offset_cycle_length: u8,
+    pub num_lod_levels: u8,
+    pub sprite_desc: &'static SpriteGridDesc,
+
+    // Laid out as [[OverlayOffsets; offset_cycle_length]; num_lod_levels;]
+    pub offset_table: &'static [OverlayOffsets],
+}
+
+struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
 
 enum TireCyclePosition {
     Up,
@@ -116,7 +130,9 @@ const TIRE_OFFSETS: [TireCycleLodLevel; NUM_RACER_LODS] = [
 ];
 
 // No cycle or LOD to worry about, unlike tires
-const BRAKE_LIGHT_OFFSETS: [(i32, i32); 4] = [(0, 23), (-2, 22), (-4, 19), (0, 16)];
+//const BRAKE_LIGHT_OFFSETS: [(i32, i32); 4] = [(0, 23), (-2, 22), (-4, 19), (0, 16)];
+const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
+    [OverlayOffsets([(0, 23), (-2, 22), (-4, 19), (0, 16)])];
 
 const NUM_RACER_LODS: usize = 4;
 
@@ -202,11 +218,19 @@ pub fn startup_player(
             transform: brake_light_xform,
             ..Default::default()
         })
+        .insert(RacerOverlay {
+            num_lod_levels: 1,
+            offset_cycle_length: 1,
+            offset_cycle_pos: 0,
+            offset_table: &BRAKE_LIGHT_OFFSETS,
+            sprite_desc: &BRAKE_LIGHT_SPRITE_DESC,
+        })
         .id();
 
     commands.insert_resource(Player {
         turn_rate: 0.0,
         is_braking: false,
+        lod_level: 0,
         speed: 0.0,
         bike_ent,
         tire_ent,
@@ -238,6 +262,11 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
         )
         .with_system(
             update_brake_lights
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
+        .with_system(
+            update_racer_offsets
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
@@ -301,28 +330,42 @@ fn update_tires(
     xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(tire_cycle.1);
 }
 
-// TODO: We should make an overlay component or something, there's also sand blasts and smoke
-fn update_brake_lights(
-    player: Res<Player>,
-    mut query: Query<(&mut Transform, &mut TextureAtlasSprite, &mut Visible)>,
-) {
-    let RacerSpriteParams { sprite_x, flip_x } = get_turning_sprite_desc(player.turn_rate);
-    let (mut xform, mut sprite, mut visible) = query
+// TODO: We should make an overlay component or something, there's also sand blasts, smoke, and boost flare
+fn update_brake_lights(player: Res<Player>, mut query: Query<&mut Visible>) {
+    let mut visible = query
         .get_mut(player.brake_light_ent)
         .expect(PLAYER_NOT_INIT);
 
-    let mut light_offset = BRAKE_LIGHT_OFFSETS[sprite_x as usize];
-    if flip_x {
-        light_offset.0 = -light_offset.0
-    };
-    sprite.flip_x = flip_x;
-
-    sprite.index = BRAKE_LIGHT_SPRITE_DESC.get_sprite_index(sprite_x, 0);
-
-    xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(light_offset.0);
-    xform.translation.y = (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(light_offset.1);
-
     visible.is_visible = player.is_braking;
+}
+
+fn update_racer_offsets(
+    player: Res<Player>,
+    mut query: Query<(&RacerOverlay, &mut TextureAtlasSprite, &mut Transform)>,
+) {
+    let RacerSpriteParams { sprite_x, flip_x } = get_turning_sprite_desc(player.turn_rate);
+    for (overlay, mut sprite, mut xform) in query.iter_mut() {
+        let lod_idx = u8::max(player.lod_level, overlay.num_lod_levels - 1);
+        let offsets_idx = (overlay.offset_cycle_length * lod_idx) + overlay.offset_cycle_pos;
+
+        let offsets = &overlay.offset_table[offsets_idx as usize];
+        let mut turn_level_offset = offsets.0[sprite_x as usize];
+
+        if flip_x {
+            turn_level_offset.0 = -turn_level_offset.0;
+        }
+        sprite.flip_x = flip_x;
+
+        // One row per LOD level, highest resolution first.
+        // Each LOD level has four columns, one for each distinct sprite based on how hard the racer is turning
+        sprite.index = overlay
+            .sprite_desc
+            .get_sprite_index(sprite_x, lod_idx as u32);
+
+        xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(turn_level_offset.0);
+        xform.translation.y =
+            (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(turn_level_offset.1);
+    }
 }
 
 fn test_modify_player(input: Res<JoyrideInput>, mut player: ResMut<Player>) {
