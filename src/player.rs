@@ -24,15 +24,53 @@ struct Player {
     brake_light_ent: Entity,
 }
 
+// struct Racer {
+//     turn_rate: f32,
+//     speed: f32,
+//     lod_level: u8,
+// }
+
 struct RacerOverlay {
     pub offset_cycle_pos: u8,
 
-    pub offset_cycle_length: u8,
-    pub num_lod_levels: u8,
-    pub sprite_desc: &'static SpriteGridDesc,
+    offset_cycle_length: u8,
+    num_lod_levels: u8,
+    sprite_desc: &'static SpriteGridDesc,
 
-    // Laid out as [[OverlayOffsets; offset_cycle_length]; num_lod_levels;]
-    pub offset_table: &'static [OverlayOffsets],
+    // Laid out as [[OverlayOffsets; offset_cycle_length]; num_lod_levels;], except continuously
+    offset_table: &'static [OverlayOffsets],
+}
+
+impl RacerOverlay {
+    pub fn new(
+        offset_cycle_length: u8,
+        num_lod_levels: u8,
+        sprite_desc: &'static SpriteGridDesc,
+        offset_table: &'static [OverlayOffsets],
+    ) -> Self {
+        let expected_num_offsets = offset_cycle_length * num_lod_levels;
+        assert!(
+            offset_table.len() == expected_num_offsets as usize,
+            "Offset table size mismatch: expected {}, was {}",
+            expected_num_offsets,
+            offset_table.len()
+        );
+        assert!(
+            sprite_desc.columns as usize >= NUM_TURN_LEVELS,
+            "Sprite grid not wide enough for all turn levels"
+        );
+        assert!(
+            sprite_desc.rows >= num_lod_levels as u32,
+            "Sprite grid not tall enough for all LOD levels"
+        );
+        Self {
+            offset_cycle_pos: 0,
+            offset_cycle_length,
+            num_lod_levels,
+            sprite_desc,
+            offset_table,
+        }
+    }
 }
 
 struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
@@ -58,10 +96,16 @@ const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     OverlayOffsets([(1, 1), (-1, 1), (4, 0), (7, 0)]),
     OverlayOffsets([(1, 0), (0, -1), (5, -2), (9, -2)]),
 ];
+fn make_tire_overlay() -> RacerOverlay {
+    RacerOverlay::new(2, 4, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
+}
 
 // No cycle or LOD to worry about, unlike tires
 const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
     [OverlayOffsets([(0, 23), (-2, 22), (-4, 19), (0, 16)])];
+fn make_brake_light_overlay() -> RacerOverlay {
+    RacerOverlay::new(1, 1, &BRAKE_LIGHT_SPRITE_DESC, &BRAKE_LIGHT_OFFSETS)
+}
 
 const NUM_RACER_LODS: usize = 4;
 
@@ -131,13 +175,7 @@ pub fn startup_player(
             ..Default::default()
         })
         .insert(Timer::from_seconds(0.1, false))
-        .insert(RacerOverlay {
-            num_lod_levels: 4,
-            offset_cycle_length: 2,
-            offset_cycle_pos: 0,
-            offset_table: &TIRE_OFFSETS,
-            sprite_desc: &TIRE_SPRITE_DESC,
-        })
+        .insert(make_tire_overlay())
         .id();
 
     let brake_light_xform = Transform::from_translation(Vec3::new(
@@ -151,13 +189,7 @@ pub fn startup_player(
             transform: brake_light_xform,
             ..Default::default()
         })
-        .insert(RacerOverlay {
-            num_lod_levels: 1,
-            offset_cycle_length: 1,
-            offset_cycle_pos: 0,
-            offset_table: &BRAKE_LIGHT_OFFSETS,
-            sprite_desc: &BRAKE_LIGHT_SPRITE_DESC,
-        })
+        .insert(make_brake_light_overlay())
         .id();
 
     commands.insert_resource(Player {
@@ -233,7 +265,6 @@ fn update_tires(player: Res<Player>, mut query: Query<(&mut RacerOverlay, &mut T
     }
 }
 
-// TODO: We should make an overlay component or something, there's also sand blasts, smoke, and boost flare
 fn update_brake_lights(player: Res<Player>, mut query: Query<&mut Visible>) {
     let mut visible = query
         .get_mut(player.brake_light_ent)
