@@ -51,7 +51,7 @@ fn reposition_skybox(
     }
 
     let road_draw_height = match road_dyn {
-        Some(road_dyn) => road_dyn.draw_height,
+        Some(road_dyn) => road_dyn.get_draw_height_pixels(),
         None => return, // No-op if no road
     };
 
@@ -67,6 +67,8 @@ fn reposition_skybox(
     } else {
         0.0
     };
+
+    // TODO: Horizontal scrolling as well
 
     // Fit the skybox to match the height of the road
     let size = sprite.size;

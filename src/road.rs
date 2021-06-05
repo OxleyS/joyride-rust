@@ -85,7 +85,7 @@ struct RoadStatic {
 // TODO: Can we encapsulate better?
 pub struct RoadDynamic {
     // The height that this road will take up on-screen when drawn
-    pub draw_height: usize,
+    draw_height: usize,
 
     // Table of road X offsets. Affected by curvature
     x_map: Box<[f32; ROAD_DISTANCE]>,
@@ -108,6 +108,23 @@ pub struct RoadDynamic {
 
     // TODO: Move to static once we read segs from file
     segs: Box<[RoadSegment]>,
+}
+
+impl RoadDynamic {
+    pub fn advance_z(&mut self, advance_amount_z: f32) {
+        assert!(advance_amount_z >= 0.0, "Can only move forward on the road");
+        self.seg_pos += advance_amount_z;
+
+        let num_advance_segs = (self.seg_pos / SEGMENT_LENGTH).floor();
+        self.seg_idx += usize::conv_trunc(num_advance_segs);
+        self.seg_pos -= num_advance_segs * SEGMENT_LENGTH;
+
+        self.z_offset = (self.z_offset + advance_amount_z) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+    }
+
+    pub fn get_draw_height_pixels(&self) -> usize {
+        self.draw_height
+    }
 }
 
 struct RoadDrawing {
@@ -276,13 +293,9 @@ fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
 }
 
 fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>) {
-    let advance_amt = joyride::TIME_STEP;
-
     // Convert ResMut to a regular mutable reference - otherwise Rust can't properly split borrows
     // between individual struct fields, and complains about multiple-borrow
     let road_dyn: &mut RoadDynamic = &mut road_dyn;
-
-    road_dyn.z_offset = (road_dyn.z_offset + advance_amt) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
 
     let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
     let mut cur_y = 1.0;

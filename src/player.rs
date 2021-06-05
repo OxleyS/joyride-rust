@@ -4,7 +4,8 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
-    joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
+    joyride::{self, JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
+    road::RoadDynamic,
     util::SpriteGridDesc,
 };
 
@@ -164,15 +165,11 @@ pub fn startup_player(
         .insert(Racer {
             lod_level: 0,
             turn_rate: 0.0,
-            speed: 0.0,
+            speed: joyride::TIME_STEP,
         })
         .id();
 
-    let tire_xform = Transform::from_translation(Vec3::new(
-        0.0, //f32::conv(FIELD_WIDTH) * 0.5,
-        0.0, //f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5,
-        TIRE_SPRITE_Z,
-    ));
+    let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_SPRITE_Z));
 
     let tire_ent = commands
         .spawn_bundle(SpriteSheetBundle {
@@ -184,11 +181,7 @@ pub fn startup_player(
         .insert(make_tire_overlay(racer_ent))
         .id();
 
-    let brake_light_xform = Transform::from_translation(Vec3::new(
-        0.0, // f32::conv(FIELD_WIDTH) * 0.5,
-        0.0, //f32::conv(BRAKE_LIGHT_SPRITE_DESC.tile_size) * 0.5,
-        BRAKE_LIGHT_SPRITE_Z,
-    ));
+    let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_SPRITE_Z));
     let brake_light_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(brake_light_atlas),
@@ -242,10 +235,24 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
+        .with_system(
+            advance_player_on_road
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerState),
+        )
 }
 
 fn update_player_state(mut player: ResMut<Player>, input: Res<JoyrideInput>) {
     player.is_braking = input.brake == JoyrideInputState::Pressed;
+}
+
+fn advance_player_on_road(
+    player: Res<Player>,
+    mut road: ResMut<RoadDynamic>,
+    racers: Query<&Racer>,
+) {
+    let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
+    road.advance_z(racer.speed);
 }
 
 fn update_bike_sprites(
