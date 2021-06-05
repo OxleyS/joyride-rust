@@ -14,7 +14,17 @@ pub enum PlayerStageLabels {
     UpdatePlayerState,
 }
 
+#[derive(Clone, Copy)]
+struct PlayerFrameTurn {
+    left: bool,
+    right: bool,
+}
+
+const TURN_BUFFER_SIZE: usize = 5;
+
 struct Player {
+    turn_buffer: [PlayerFrameTurn; TURN_BUFFER_SIZE],
+
     is_braking: bool,
     racer_ent: Entity,
 
@@ -119,6 +129,9 @@ const RACER_MIN_SPEED: f32 = 1.4;
 const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
 const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
+const PLAYER_TURN_ACCEL: f32 = 22.5;
+const PLAYER_TURN_FALLOFF: f32 = 52.5;
+
 const BIKE_SPRITE_Z: f32 = 3.0;
 const TIRE_SPRITE_Z: f32 = 3.1;
 const BRAKE_LIGHT_SPRITE_Z: f32 = 3.1;
@@ -199,6 +212,10 @@ pub fn startup_player(
         .push_children(&[tire_ent, brake_light_ent]);
 
     commands.insert_resource(Player {
+        turn_buffer: [PlayerFrameTurn {
+            left: false,
+            right: false,
+        }; TURN_BUFFER_SIZE],
         is_braking: false,
         racer_ent,
         tire_ent,
@@ -208,15 +225,15 @@ pub fn startup_player(
 
 pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
     system_set
-        .with_system(
-            test_modify_player
-                .system()
-                .label(PlayerStageLabels::UpdatePlayerState),
-        )
+        // .with_system(
+        //     test_modify_player
+        //         .system()
+        //         .label(PlayerStageLabels::UpdatePlayerState),
+        // )
         .with_system(
             update_player_state
                 .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
+                .label(PlayerStageLabels::UpdatePlayerState),
         )
         .with_system(
             update_bike_sprites
@@ -238,23 +255,41 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
-        .with_system(
-            advance_player_on_road
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
-        )
 }
 
-fn update_player_state(mut player: ResMut<Player>, input: Res<JoyrideInput>) {
-    player.is_braking = input.brake == JoyrideInputState::Pressed;
-}
-
-fn advance_player_on_road(
-    player: Res<Player>,
+fn update_player_state(
+    mut player: ResMut<Player>,
+    input: Res<JoyrideInput>,
+    mut racers: Query<&mut Racer>,
     mut road: ResMut<RoadDynamic>,
-    racers: Query<&Racer>,
 ) {
-    let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
+    let mut racer = racers.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
+
+    let next_turn = player.turn_buffer[0];
+    player.turn_buffer.copy_within(1.., 0);
+    player.turn_buffer[TURN_BUFFER_SIZE - 1] = PlayerFrameTurn {
+        left: input.left.is_pressed(),
+        right: input.right.is_pressed(),
+    };
+
+    let turn_accel = PLAYER_TURN_ACCEL * joyride::TIME_STEP;
+    let turn_falloff = PLAYER_TURN_FALLOFF * joyride::TIME_STEP;
+
+    // Increase steering to the left if the button is held, otherwise undo any left steering
+    if next_turn.left {
+        racer.turn_rate = f32::max(-MAX_TURN_RATE, racer.turn_rate - turn_accel);
+    } else if racer.turn_rate < 0.0 {
+        racer.turn_rate = f32::min(0.0, racer.turn_rate + turn_falloff)
+    }
+
+    // Same for the right
+    if next_turn.right {
+        racer.turn_rate = f32::min(MAX_TURN_RATE, racer.turn_rate + turn_accel);
+    } else if racer.turn_rate > 0.0 {
+        racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
+    }
+
+    player.is_braking = input.brake == JoyrideInputState::Pressed;
     road.advance_z(racer.speed * joyride::TIME_STEP);
 }
 

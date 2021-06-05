@@ -23,6 +23,12 @@ impl Default for JoyrideInputState {
     }
 }
 
+impl JoyrideInputState {
+    pub fn is_pressed(&self) -> bool {
+        *self == JoyrideInputState::JustPressed || *self == JoyrideInputState::Pressed
+    }
+}
+
 #[derive(Default, PartialEq, Eq)]
 pub struct JoyrideInput {
     pub left: JoyrideInputState,
