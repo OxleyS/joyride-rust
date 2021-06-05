@@ -114,7 +114,10 @@ const NUM_RACER_LODS: usize = 4;
 const NUM_TURN_LEVELS: usize = 4;
 
 const MAX_TURN_RATE: f32 = 10.0;
-const MAX_TURBO_SPEED: f32 = 8.11;
+
+const RACER_MIN_SPEED: f32 = 1.4;
+const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
+const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
 const BIKE_SPRITE_Z: f32 = 3.0;
 const TIRE_SPRITE_Z: f32 = 3.1;
@@ -165,7 +168,7 @@ pub fn startup_player(
         .insert(Racer {
             lod_level: 0,
             turn_rate: 0.0,
-            speed: joyride::TIME_STEP,
+            speed: RACER_MIN_SPEED,
         })
         .id();
 
@@ -252,7 +255,7 @@ fn advance_player_on_road(
     racers: Query<&Racer>,
 ) {
     let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
-    road.advance_z(racer.speed);
+    road.advance_z(racer.speed * joyride::TIME_STEP);
 }
 
 fn update_bike_sprites(
@@ -361,5 +364,5 @@ fn get_turning_sprite_desc(turn_rate: f32) -> RacerSpriteParams {
 }
 
 fn get_tire_cycle_seconds(speed: f32) -> f32 {
-    f32::clamp((MAX_TURBO_SPEED / speed) / 16.0, 0.02, 4.0)
+    f32::clamp((RACER_MAX_TURBO_SPEED / speed) / 16.0, 0.02, 4.0)
 }
