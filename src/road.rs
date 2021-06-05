@@ -46,7 +46,7 @@ const RUMBLE_STRIP_WIDTH: f32 = 20.0;
 const ROAD_NOT_INIT: &str = "Road was not initialized";
 
 // Debug flags
-const DEBUG_VIS_SEGMENTS: bool = false;
+const DEBUG_VIS_SEGMENTS: bool = true;
 
 #[derive(Clone, Copy)]
 struct QuadraticCoefficients {

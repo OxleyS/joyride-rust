@@ -79,23 +79,23 @@ struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
 const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     // LOD level 0
     // Up cycle
-    OverlayOffsets([(0, 8), (1, 8), (3, 7), (10, 5)]),
+    OverlayOffsets([(0, -16), (1, -16), (3, -17), (10, -19)]),
     // Down cycle
-    OverlayOffsets([(0, 5), (2, 5), (6, 3), (12, 3)]),
+    OverlayOffsets([(0, -19), (2, -19), (6, -21), (12, -21)]),
     // LOD level 1
     // Up cycle
-    OverlayOffsets([(0, 6), (0, 5), (3, 5), (8, 3)]),
+    OverlayOffsets([(0, -18), (0, -17), (3, -17), (8, -21)]),
     // Down cycle
-    OverlayOffsets([(0, 3), (2, 2), (5, 2), (12, 0)]),
+    OverlayOffsets([(0, -21), (2, -22), (5, -22), (12, -24)]),
     // LOD level 2
     // Up cycle
-    OverlayOffsets([(1, 4), (1, 3), (2, 2), (6, 2)]),
+    OverlayOffsets([(1, -20), (1, -21), (2, -22), (6, -22)]),
     // Down cycle
-    OverlayOffsets([(1, 2), (2, 1), (3, 0), (9, -1)]),
+    OverlayOffsets([(1, -22), (2, -23), (3, -24), (9, -25)]),
     // LOD level 3
     // Up cycle
-    OverlayOffsets([(1, 1), (-1, 1), (4, 0), (7, 0)]),
-    OverlayOffsets([(1, 0), (0, -1), (5, -2), (9, -2)]),
+    OverlayOffsets([(1, -23), (-1, -23), (4, -24), (7, -24)]),
+    OverlayOffsets([(1, -24), (0, -25), (5, -26), (9, -26)]),
 ];
 fn make_tire_overlay(racer: Entity) -> RacerOverlay {
     RacerOverlay::new(racer, 2, 4, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
@@ -103,7 +103,7 @@ fn make_tire_overlay(racer: Entity) -> RacerOverlay {
 
 // No cycle or LOD to worry about, unlike tires
 const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
-    [OverlayOffsets([(0, 23), (-2, 22), (-4, 19), (0, 16)])];
+    [OverlayOffsets([(0, -1), (-2, -2), (-4, -5), (0, -8)])];
 fn make_brake_light_overlay(racer: Entity) -> RacerOverlay {
     RacerOverlay::new(racer, 1, 1, &BRAKE_LIGHT_SPRITE_DESC, &BRAKE_LIGHT_OFFSETS)
 }
@@ -169,8 +169,8 @@ pub fn startup_player(
         .id();
 
     let tire_xform = Transform::from_translation(Vec3::new(
-        f32::conv(FIELD_WIDTH) * 0.5,
-        f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5,
+        0.0, //f32::conv(FIELD_WIDTH) * 0.5,
+        0.0, //f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5,
         TIRE_SPRITE_Z,
     ));
 
@@ -185,8 +185,8 @@ pub fn startup_player(
         .id();
 
     let brake_light_xform = Transform::from_translation(Vec3::new(
-        f32::conv(FIELD_WIDTH) * 0.5,
-        f32::conv(BRAKE_LIGHT_SPRITE_DESC.tile_size) * 0.5,
+        0.0, // f32::conv(FIELD_WIDTH) * 0.5,
+        0.0, //f32::conv(BRAKE_LIGHT_SPRITE_DESC.tile_size) * 0.5,
         BRAKE_LIGHT_SPRITE_Z,
     ));
     let brake_light_ent = commands
@@ -197,6 +197,10 @@ pub fn startup_player(
         })
         .insert(make_brake_light_overlay(racer_ent))
         .id();
+
+    commands
+        .entity(racer_ent)
+        .push_children(&[tire_ent, brake_light_ent]);
 
     commands.insert_resource(Player {
         is_braking: false,
@@ -311,10 +315,8 @@ fn update_racer_offsets(
             .sprite_desc
             .get_sprite_index(sprite_x, lod_idx as u32);
 
-        // TODO: Use parent transforms instead
-        xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + f32::conv(turn_level_offset.0);
-        xform.translation.y =
-            (f32::conv(TIRE_SPRITE_DESC.tile_size) * 0.5) + f32::conv(turn_level_offset.1);
+        xform.translation.x = f32::conv(turn_level_offset.0);
+        xform.translation.y = f32::conv(turn_level_offset.1);
     }
 }
 
