@@ -33,6 +33,7 @@ impl JoyrideInputState {
 pub struct JoyrideInput {
     pub left: JoyrideInputState,
     pub right: JoyrideInputState,
+    pub accel: JoyrideInputState,
     pub brake: JoyrideInputState,
 }
 
@@ -44,6 +45,7 @@ enum InputStageLabels {
 struct JoyrideInputPressState {
     left: bool,
     right: bool,
+    accel: bool,
     brake: bool,
 }
 
@@ -52,6 +54,7 @@ impl Default for JoyrideInputPressState {
         Self {
             left: false,
             right: false,
+            accel: false,
             brake: false,
         }
     }
@@ -99,6 +102,9 @@ fn update_instant_input(
     if input.pressed(KeyCode::Right) {
         press_state.right = true;
     }
+    if input.pressed(KeyCode::Z) {
+        press_state.accel = true;
+    }
     if input.pressed(KeyCode::X) {
         press_state.brake = true;
     }
@@ -110,6 +116,7 @@ fn update_fixedframe_input(
 ) {
     update_input_state(&mut input_state.left, &mut press_state.left);
     update_input_state(&mut input_state.right, &mut press_state.right);
+    update_input_state(&mut input_state.accel, &mut press_state.accel);
     update_input_state(&mut input_state.brake, &mut press_state.brake);
 }
 

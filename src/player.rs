@@ -176,6 +176,8 @@ const RACER_MIN_SPEED: f32 = 1.4;
 const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
 const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
+const PLAYER_SPEED_ACCEL: f32 = 0.75;
+const PLAYER_COAST_DRAG: f32 = 0.75;
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
@@ -365,7 +367,23 @@ fn update_player_state(
         racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
     }
 
-    player.is_braking = input.brake == JoyrideInputState::Pressed;
+    player.is_braking = input.brake.is_pressed();
+
+    let is_accelerating = input.accel.is_pressed();
+    if is_accelerating {
+        racer.speed = f32::clamp(
+            racer.speed + (PLAYER_SPEED_ACCEL * TIME_STEP),
+            RACER_MIN_SPEED,
+            RACER_MAX_NORMAL_SPEED,
+        );
+    } else {
+        racer.speed = f32::clamp(
+            racer.speed - (PLAYER_COAST_DRAG * TIME_STEP),
+            RACER_MIN_SPEED,
+            RACER_MAX_NORMAL_SPEED,
+        );
+    }
+
     road_dyn.advance_z(racer.speed * TIME_STEP);
 
     let mut road_x = road_dyn.x_offset;
