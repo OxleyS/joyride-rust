@@ -74,7 +74,7 @@ struct RoadSegment {
     hill: f32,
 }
 
-struct RoadStatic {
+pub struct RoadStatic {
     render_tex: Handle<Texture>,
     z_map: Box<[f32; ROAD_DISTANCE]>,
     scale_map: Box<[f32; ROAD_DISTANCE]>,
@@ -129,6 +129,10 @@ impl RoadDynamic {
     pub fn get_draw_height_pixels(&self) -> usize {
         self.draw_height
     }
+}
+
+pub fn is_offroad(road_static: &RoadStatic, road_dyn: &RoadDynamic) -> bool {
+    road_dyn.x_offset.abs() > (PAVEMENT_WIDTH + RUMBLE_STRIP_WIDTH) * road_static.scale_map[0]
 }
 
 struct RoadDrawing {
