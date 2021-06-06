@@ -20,7 +20,7 @@ struct PlayerFrameTurn {
     right: bool,
 }
 
-const TURN_BUFFER_SIZE: usize = 5;
+const TURN_BUFFER_SIZE: usize = 3;
 
 struct Player {
     turn_buffer: [PlayerFrameTurn; TURN_BUFFER_SIZE],
@@ -123,14 +123,15 @@ const NUM_RACER_LODS: usize = 4;
 
 const NUM_TURN_LEVELS: usize = 4;
 
-const MAX_TURN_RATE: f32 = 10.0;
+const MAX_TURN_RATE: f32 = 400.0;
 
 const RACER_MIN_SPEED: f32 = 1.4;
 const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
 const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
-const PLAYER_TURN_ACCEL: f32 = 22.5;
-const PLAYER_TURN_FALLOFF: f32 = 52.5;
+const PLAYER_TURN_ACCEL: f32 = 1200.0;
+const PLAYER_TURN_FALLOFF: f32 = 1800.0;
+const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
 const BIKE_SPRITE_Z: f32 = 3.0;
 const TIRE_SPRITE_Z: f32 = 3.1;
@@ -181,7 +182,7 @@ pub fn startup_player(
         .insert(Racer {
             lod_level: 0,
             turn_rate: 0.0,
-            speed: RACER_MIN_SPEED,
+            speed: RACER_MAX_NORMAL_SPEED,
         })
         .id();
 
@@ -291,6 +292,16 @@ fn update_player_state(
 
     player.is_braking = input.brake == JoyrideInputState::Pressed;
     road.advance_z(racer.speed * joyride::TIME_STEP);
+
+    let mut road_x = road.x_offset;
+
+    road_x -= racer.turn_rate * joyride::TIME_STEP;
+
+    // Apply the road's curvature against the player
+    road_x +=
+        road.get_seg_curvature() * joyride::TIME_STEP * PLAYER_ROAD_CURVE_SCALAR * racer.speed;
+
+    road.x_offset = f32::clamp(road_x, -500.0, 500.0);
 }
 
 fn update_bike_sprites(

@@ -37,7 +37,7 @@ const CAMERA_HEIGHT: f32 = 75.0;
 const COLOR_SWITCH_Z_INTERVAL: f32 = 0.5;
 
 // The length (in Z) of a single road segment
-const SEGMENT_LENGTH: f32 = 50.0;
+const SEGMENT_LENGTH: f32 = 15.0;
 
 const PAVEMENT_WIDTH: f32 = 125.0;
 const CENTER_LINE_WIDTH: f32 = 2.0;
@@ -95,7 +95,7 @@ pub struct RoadDynamic {
     y_map: Box<[f32; ROAD_DISTANCE]>,
 
     // The racer's offset from the center of the road
-    x_offset: f32,
+    pub x_offset: f32,
 
     // Used to shift colors during road drawing
     z_offset: f32,
@@ -120,6 +120,10 @@ impl RoadDynamic {
         self.seg_pos -= num_advance_segs * SEGMENT_LENGTH;
 
         self.z_offset = (self.z_offset + advance_amount_z) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+    }
+
+    pub fn get_seg_curvature(&self) -> f32 {
+        get_bounded_seg(&self.segs, self.seg_idx).curve
     }
 
     pub fn get_draw_height_pixels(&self) -> usize {
