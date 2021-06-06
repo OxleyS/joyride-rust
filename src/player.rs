@@ -24,7 +24,7 @@ const TURN_BUFFER_SIZE: usize = 3;
 
 const OFFROAD_SHAKE_OFFSETS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
 
-struct Player {
+pub struct Player {
     turn_buffer: [PlayerFrameTurn; TURN_BUFFER_SIZE],
 
     is_braking: bool,
@@ -39,11 +39,17 @@ struct Player {
     sand_blast_ent: Entity,
 }
 
+impl Player {
+    pub fn get_racer_ent(&self) -> Entity {
+        self.racer_ent
+    }
+}
+
 struct Tire {}
 
-struct Racer {
-    turn_rate: f32,
-    speed: f32,
+pub struct Racer {
+    pub turn_rate: f32,
+    pub speed: f32,
     lod_level: u8,
 }
 
@@ -173,19 +179,23 @@ const NUM_TURN_LEVELS: usize = 4;
 const MAX_TURN_RATE: f32 = 400.0;
 
 const RACER_MIN_SPEED: f32 = 1.4;
-const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
+pub const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
 const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
-const PLAYER_SPEED_ACCEL: f32 = 0.75;
+// TODO: Instead scale acceleration by how close we are to max speed.
+// Makes stopping less punishing while forcing a commitment to unlock turbo
+const PLAYER_SPEED_ACCEL: f32 = 1.2;
+
 const PLAYER_COAST_DRAG: f32 = 0.75;
+const PLAYER_BRAKE_DRAG: f32 = 3.6;
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
-const BIKE_SPRITE_Z: f32 = 3.0;
-const TIRE_SPRITE_Z: f32 = 3.1;
-const BRAKE_LIGHT_SPRITE_Z: f32 = 3.1;
-const SAND_BLAST_SPRITE_Z: f32 = 3.2;
+const BIKE_SPRITE_Z: f32 = 100.0;
+const TIRE_SPRITE_Z: f32 = 100.1;
+const BRAKE_LIGHT_SPRITE_Z: f32 = 100.1;
+const SAND_BLAST_SPRITE_Z: f32 = 100.2;
 
 const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
@@ -368,19 +378,21 @@ fn update_player_state(
     }
 
     player.is_braking = input.brake.is_pressed();
-
     let is_accelerating = input.accel.is_pressed();
-    if is_accelerating {
-        racer.speed = f32::clamp(
-            racer.speed + (PLAYER_SPEED_ACCEL * TIME_STEP),
+    if player.is_braking {
+        racer.speed = f32::max(
+            racer.speed - (PLAYER_BRAKE_DRAG * TIME_STEP),
             RACER_MIN_SPEED,
+        )
+    } else if is_accelerating {
+        racer.speed = f32::min(
+            racer.speed + (PLAYER_SPEED_ACCEL * TIME_STEP),
             RACER_MAX_NORMAL_SPEED,
         );
     } else {
-        racer.speed = f32::clamp(
+        racer.speed = f32::max(
             racer.speed - (PLAYER_COAST_DRAG * TIME_STEP),
             RACER_MIN_SPEED,
-            RACER_MAX_NORMAL_SPEED,
         );
     }
 
@@ -432,10 +444,10 @@ fn update_bike_sprites(
 }
 
 fn update_tires(
-    mut overlay_query: Query<(&mut RacerOverlay, &mut Timer, &Tire)>,
+    mut overlay_query: Query<(&mut RacerOverlay, &mut Timer), With<Tire>>,
     racer_query: Query<&Racer>,
 ) {
-    for (mut overlay, mut timer, _) in overlay_query.iter_mut() {
+    for (mut overlay, mut timer) in overlay_query.iter_mut() {
         let speed = racer_query.get(overlay.racer).map_or(0.0, |r| r.speed);
 
         timer.tick(Duration::from_secs_f32(TIME_STEP));

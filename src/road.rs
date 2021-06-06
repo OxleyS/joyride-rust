@@ -15,7 +15,7 @@ pub enum RoadStageLabels {
 }
 
 // Used for layering with other sprites
-const ROAD_SPRITE_Z: f32 = 1.0;
+const ROAD_SPRITE_Z: f32 = 50.0;
 
 // The number of pixel lines our coordinate maps stretch for, from the bottom of the screen
 pub const ROAD_DISTANCE: usize = 110;
