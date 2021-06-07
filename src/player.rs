@@ -184,10 +184,13 @@ const RACER_MAX_TURBO_SPEED: f32 = 10.43;
 
 // TODO: Instead scale acceleration by how close we are to max speed.
 // Makes stopping less punishing while forcing a commitment to unlock turbo
-const PLAYER_SPEED_ACCEL: f32 = 1.2;
+const PLAYER_SPEED_MIN_ACCEL: f32 = 0.4;
+const PLAYER_SPEED_MAX_ACCEL: f32 = 3.0;
 
 const PLAYER_COAST_DRAG: f32 = 0.75;
 const PLAYER_BRAKE_DRAG: f32 = 3.6;
+const PLAYER_OFFROAD_DRAG: f32 = 1.8;
+
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
@@ -377,24 +380,32 @@ fn update_player_state(
         racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
     }
 
+    let mut speed_change = 0.0;
+
     player.is_braking = input.brake.is_pressed();
     let is_accelerating = input.accel.is_pressed();
     if player.is_braking {
-        racer.speed = f32::max(
-            racer.speed - (PLAYER_BRAKE_DRAG * TIME_STEP),
-            RACER_MIN_SPEED,
-        )
+        speed_change -= PLAYER_BRAKE_DRAG;
     } else if is_accelerating {
-        racer.speed = f32::min(
-            racer.speed + (PLAYER_SPEED_ACCEL * TIME_STEP),
-            RACER_MAX_NORMAL_SPEED,
-        );
+        let accel_scale = f32::max(1.0 - (racer.speed / RACER_MAX_NORMAL_SPEED), 0.0);
+        let accel = PLAYER_SPEED_MIN_ACCEL
+            + ((PLAYER_SPEED_MAX_ACCEL - PLAYER_SPEED_MIN_ACCEL) * accel_scale);
+        speed_change += accel;
     } else {
-        racer.speed = f32::max(
-            racer.speed - (PLAYER_COAST_DRAG * TIME_STEP),
-            RACER_MIN_SPEED,
-        );
+        speed_change -= PLAYER_COAST_DRAG;
     }
+
+    let is_offroad = is_offroad(&road_static, &road_dyn);
+    if is_offroad {
+        speed_change -= PLAYER_OFFROAD_DRAG;
+    }
+
+    racer.speed = f32::clamp(
+        // TODO: Applying delta time here may be a problem for boost end clamping
+        racer.speed + (speed_change * TIME_STEP),
+        RACER_MIN_SPEED,
+        RACER_MAX_NORMAL_SPEED,
+    );
 
     road_dyn.advance_z(racer.speed * TIME_STEP);
 
@@ -407,7 +418,6 @@ fn update_player_state(
 
     road_dyn.x_offset = f32::clamp(road_x, -500.0, 500.0);
 
-    let is_offroad = is_offroad(&road_static, &road_dyn);
     let xform_offset = if is_offroad {
         player
             .offroad_shake_timer

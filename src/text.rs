@@ -10,9 +10,11 @@ use crate::{
 };
 
 struct SpeedText {
-    ents: [Entity; 3],
+    num_ents: [Entity; 3],
     flash_timer: Timer,
     should_flash: bool,
+
+    km_ent: Entity,
 }
 
 const MAX_NORMAL_DISPLAY_SPEED: u32 = 280;
@@ -25,6 +27,11 @@ const SMALL_NUM_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     rows: 1,
     columns: 10,
 };
+const SMALL_TEXT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
+    tile_size: 32,
+    rows: 1,
+    columns: 4,
+};
 
 const TEXT_NOT_INIT: &str = "Text not initialized";
 
@@ -33,13 +40,15 @@ pub fn startup_speed_text(
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
-    let nums_tex = asset_server.load("textures/small_num_atlas.png");
-    let nums_atlas = texture_atlases.add(SMALL_NUM_SPRITE_DESC.make_atlas(nums_tex));
+    let small_nums_tex = asset_server.load("textures/small_num_atlas.png");
+    let small_nums_atlas = texture_atlases.add(SMALL_NUM_SPRITE_DESC.make_atlas(small_nums_tex));
+    let small_texts_tex = asset_server.load("textures/small_text_atlas.png");
+    let small_texts_atlas = texture_atlases.add(SMALL_TEXT_SPRITE_DESC.make_atlas(small_texts_tex));
 
-    let base_pos = Vec2::new(
-        f32::conv(FIELD_WIDTH) - 50.0,
-        f32::conv(FIELD_HEIGHT) - 10.0,
-    );
+    let field_width = f32::conv(FIELD_WIDTH);
+    let field_height = f32::conv(FIELD_HEIGHT);
+
+    let base_pos = Vec2::new(field_width - 48.0, field_height - 10.0);
 
     // Placeholder value. Unfortunately, building by iterating over (0..3) loses the fixed size
     let mut ents = [Entity::new(0); 3];
@@ -55,17 +64,52 @@ pub fn startup_speed_text(
 
         *ent = commands
             .spawn_bundle(SpriteSheetBundle {
-                texture_atlas: nums_atlas.clone(),
+                texture_atlas: small_nums_atlas.clone(),
                 transform: Transform::from_translation(t),
                 ..Default::default()
             })
             .id()
     }
 
+    let km_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: small_texts_atlas.clone(),
+            sprite: TextureAtlasSprite {
+                color: Color::YELLOW,
+                index: 0,
+                ..Default::default()
+            },
+            transform: Transform::from_translation(Vec3::new(
+                field_width - 16.0,
+                field_height - 10.0,
+                TEXT_Z,
+            )),
+            ..Default::default()
+        })
+        .id();
+
+    let speed_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: small_texts_atlas,
+            sprite: TextureAtlasSprite {
+                color: Color::YELLOW,
+                index: 1,
+                ..Default::default()
+            },
+            transform: Transform::from_translation(Vec3::new(
+                field_width - 72.0,
+                field_height - 10.0,
+                TEXT_Z,
+            )),
+            ..Default::default()
+        })
+        .id();
+
     commands.insert_resource(SpeedText {
-        ents,
+        num_ents: ents,
         flash_timer: Timer::from_seconds(1.0, true),
         should_flash: false,
+        km_ent,
     });
 }
 
@@ -111,7 +155,7 @@ fn update_speed_text(
         Color::WHITE
     };
 
-    for (digit, ent) in digits.iter().zip(&speed_text.ents) {
+    for (digit, ent) in digits.iter().zip(&speed_text.num_ents) {
         let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);
         sprite.index = *digit;
         sprite.color = color;
