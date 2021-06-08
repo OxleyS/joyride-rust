@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
-    joyride::{self, JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
+    joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::SpriteGridDesc,
 };

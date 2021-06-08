@@ -7,7 +7,9 @@ pub const FIELD_HEIGHT: u32 = 240;
 // We lock the framerate, since this is a retro-style game, after all
 pub const TIME_STEP: f32 = 1.0 / 30.0;
 
-pub struct JoyrideGame {}
+pub struct JoyrideGame {
+    pub remaining_seconds: f32,
+}
 
 #[derive(PartialEq, Eq)]
 pub enum JoyrideInputState {
@@ -61,7 +63,9 @@ impl Default for JoyrideInputPressState {
 }
 
 fn startup_joyride(mut commands: Commands) {
-    commands.insert_resource(JoyrideGame {});
+    commands.insert_resource(JoyrideGame {
+        remaining_seconds: 50.0,
+    });
     commands.insert_resource(JoyrideInputPressState::default());
     commands.insert_resource(JoyrideInput::default());
 
