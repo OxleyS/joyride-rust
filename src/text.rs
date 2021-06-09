@@ -232,10 +232,11 @@ fn update_time_text(
     time_text: Res<TimeText>,
     mut texts: Query<&mut TextureAtlasSprite>,
 ) {
-    let digits: [u32; 2] = [
-        (game.remaining_seconds / 10.0).cast_floor(),
-        (game.remaining_seconds % 10.0).cast_floor(),
-    ];
+    let rem_seconds =
+        game.remaining_time.duration().as_secs_f32() - game.remaining_time.elapsed_secs();
+
+    let rem_seconds: u32 = u32::clamp(rem_seconds.cast_floor(), 0, 99);
+    let digits: [u32; 2] = [(rem_seconds / 10), (rem_seconds % 10)];
 
     for (digit, ent) in digits.iter().zip(&time_text.num_ents) {
         let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);

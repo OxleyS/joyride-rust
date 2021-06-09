@@ -8,7 +8,7 @@ pub const FIELD_HEIGHT: u32 = 240;
 pub const TIME_STEP: f32 = 1.0 / 30.0;
 
 pub struct JoyrideGame {
-    pub remaining_seconds: f32,
+    pub remaining_time: Timer,
 }
 
 #[derive(PartialEq, Eq)]
@@ -35,6 +35,8 @@ impl JoyrideInputState {
 pub struct JoyrideInput {
     pub left: JoyrideInputState,
     pub right: JoyrideInputState,
+    pub up: JoyrideInputState,
+    pub down: JoyrideInputState,
     pub accel: JoyrideInputState,
     pub brake: JoyrideInputState,
 }
@@ -47,6 +49,8 @@ enum InputStageLabels {
 struct JoyrideInputPressState {
     left: bool,
     right: bool,
+    up: bool,
+    down: bool,
     accel: bool,
     brake: bool,
 }
@@ -56,6 +60,8 @@ impl Default for JoyrideInputPressState {
         Self {
             left: false,
             right: false,
+            up: false,
+            down: false,
             accel: false,
             brake: false,
         }
@@ -64,7 +70,7 @@ impl Default for JoyrideInputPressState {
 
 fn startup_joyride(mut commands: Commands) {
     commands.insert_resource(JoyrideGame {
-        remaining_seconds: 50.0,
+        remaining_time: Timer::from_seconds(100.0, false),
     });
     commands.insert_resource(JoyrideInputPressState::default());
     commands.insert_resource(JoyrideInput::default());
@@ -106,6 +112,12 @@ fn update_instant_input(
     if input.pressed(KeyCode::Right) {
         press_state.right = true;
     }
+    if input.pressed(KeyCode::Up) {
+        press_state.up = true;
+    }
+    if input.pressed(KeyCode::Down) {
+        press_state.down = true;
+    }
     if input.pressed(KeyCode::Z) {
         press_state.accel = true;
     }
@@ -120,6 +132,8 @@ fn update_fixedframe_input(
 ) {
     update_input_state(&mut input_state.left, &mut press_state.left);
     update_input_state(&mut input_state.right, &mut press_state.right);
+    update_input_state(&mut input_state.up, &mut press_state.up);
+    update_input_state(&mut input_state.down, &mut press_state.down);
     update_input_state(&mut input_state.accel, &mut press_state.accel);
     update_input_state(&mut input_state.brake, &mut press_state.brake);
 }

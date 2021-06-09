@@ -119,23 +119,23 @@ struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
 const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     // LOD level 0
     // Up cycle
-    OverlayOffsets([(0, -16), (1, -16), (3, -17), (10, -19)]),
+    OverlayOffsets([(0, -16), (-1, -16), (-3, -17), (-10, -19)]),
     // Down cycle
-    OverlayOffsets([(0, -19), (2, -19), (6, -21), (12, -21)]),
+    OverlayOffsets([(0, -19), (-2, -19), (-6, -21), (-12, -21)]),
     // LOD level 1
     // Up cycle
-    OverlayOffsets([(0, -18), (0, -17), (3, -17), (8, -21)]),
+    OverlayOffsets([(0, -18), (0, -17), (-3, -17), (-8, -21)]),
     // Down cycle
-    OverlayOffsets([(0, -21), (2, -22), (5, -22), (12, -24)]),
+    OverlayOffsets([(0, -21), (-2, -22), (-5, -22), (-12, -24)]),
     // LOD level 2
     // Up cycle
-    OverlayOffsets([(1, -20), (1, -21), (2, -22), (6, -22)]),
+    OverlayOffsets([(0, -21), (-1, -21), (-2, -22), (-6, -22)]),
     // Down cycle
-    OverlayOffsets([(1, -22), (2, -23), (3, -24), (9, -25)]),
+    OverlayOffsets([(0, -23), (-2, -23), (-3, -24), (-9, -25)]),
     // LOD level 3
     // Up cycle
-    OverlayOffsets([(1, -23), (-1, -23), (4, -24), (7, -24)]),
-    OverlayOffsets([(1, -24), (0, -25), (5, -26), (9, -26)]),
+    OverlayOffsets([(1, -23), (1, -23), (-4, -24), (-7, -24)]),
+    OverlayOffsets([(1, -24), (0, -25), (-5, -26), (-9, -26)]),
 ];
 fn make_tire_overlay(racer: Entity) -> RacerOverlay {
     RacerOverlay::new(racer, 2, 1, 4, true, true, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
@@ -143,7 +143,7 @@ fn make_tire_overlay(racer: Entity) -> RacerOverlay {
 
 // No cycle or LOD to worry about, unlike tires
 const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
-    [OverlayOffsets([(0, -1), (-2, -2), (-4, -5), (0, -8)])];
+    [OverlayOffsets([(0, -1), (2, -2), (4, -5), (0, -8)])];
 fn make_brake_light_overlay(racer: Entity) -> RacerOverlay {
     RacerOverlay::new(
         racer,
@@ -157,8 +157,12 @@ fn make_brake_light_overlay(racer: Entity) -> RacerOverlay {
     )
 }
 
-const SAND_BLAST_OFFSETS: [OverlayOffsets; 1] =
-    [OverlayOffsets([(0, -16), (8, -16), (14, -16), (22, -16)])];
+const SAND_BLAST_OFFSETS: [OverlayOffsets; 1] = [OverlayOffsets([
+    (0, -16),
+    (-8, -16),
+    (-14, -16),
+    (-22, -16),
+])];
 fn make_sand_blast_overlay(racer: Entity) -> RacerOverlay {
     RacerOverlay::new(
         racer,
@@ -202,7 +206,7 @@ const SAND_BLAST_SPRITE_Z: f32 = 100.2;
 
 const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
-    rows: 4,
+    rows: 3,
     columns: 6,
 };
 const TIRE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
@@ -321,7 +325,7 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .label(PlayerStageLabels::UpdatePlayerState),
         )
         .with_system(
-            update_bike_sprites
+            update_player_bike_sprites
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
@@ -437,7 +441,7 @@ fn update_player_state(
     xform.translation.y = (f32::conv(BIKE_SPRITE_DESC.tile_size) * 0.5) + xform_offset.1;
 }
 
-fn update_bike_sprites(
+fn update_player_bike_sprites(
     player: Res<Player>,
     mut racer_query: Query<(&mut TextureAtlasSprite, &Racer)>,
 ) {
@@ -445,12 +449,22 @@ fn update_bike_sprites(
         .get_mut(player.racer_ent)
         .expect(PLAYER_NOT_INIT);
 
-    let RacerSpriteParams {
-        turn_idx: sprite_x,
-        flip_x,
-    } = get_turning_sprite_desc(racer.turn_rate);
-    let sprite_y = if flip_x { 1 } else { 0 }; // TODO: Actually flip the sprite instead?
-    sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+    // The player's sprite sheet is laid out differently than other racers, missing a lot
+    if racer.lod_level == 0 {
+        let RacerSpriteParams {
+            turn_idx: sprite_x,
+            flip_x,
+        } = get_turning_sprite_desc(racer.turn_rate);
+
+        let sprite_y = 0;
+        sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+        sprite.flip_x = flip_x;
+    } else {
+        let sprite_x = racer.lod_level.cast();
+        let sprite_y = 1;
+        sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+        sprite.flip_x = false;
+    }
 }
 
 fn update_tires(
@@ -567,7 +581,7 @@ fn get_turning_sprite_desc(turn_rate: f32) -> RacerSpriteParams {
 
     RacerSpriteParams {
         turn_idx,
-        flip_x: turn_div_trunc >= 0,
+        flip_x: turn_div_trunc < 0,
     }
 }
 
