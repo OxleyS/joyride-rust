@@ -5,6 +5,10 @@ use easy_cast::*;
 
 use crate::{
     joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
+    racer::{
+        get_turning_sprite_desc, make_racer, OverlayOffsets, Racer, RacerAssets, RacerOverlay,
+        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED,
+    },
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::SpriteGridDesc,
 };
@@ -34,7 +38,6 @@ pub struct Player {
 
     racer_ent: Entity,
 
-    tire_ent: Entity,
     brake_light_ent: Entity,
     sand_blast_ent: Entity,
 }
@@ -43,102 +46,6 @@ impl Player {
     pub fn get_racer_ent(&self) -> Entity {
         self.racer_ent
     }
-}
-
-struct Tire {}
-
-pub struct Racer {
-    pub turn_rate: f32,
-    pub speed: f32,
-    lod_level: u8,
-}
-
-struct RacerOverlay {
-    pub offset_cycle_pos: u8,
-    pub sprite_cycle_pos: u8,
-
-    racer: Entity,
-
-    offset_cycle_length: u8,
-    sprite_cycle_length: u8,
-    num_lod_levels: u8,
-    turnable: bool,
-    flippable: bool,
-    sprite_desc: &'static SpriteGridDesc,
-
-    // Laid out as [[OverlayOffsets; offset_cycle_length]; num_lod_levels;], except continuously
-    offset_table: &'static [OverlayOffsets],
-}
-
-impl RacerOverlay {
-    pub fn new(
-        racer: Entity,
-        offset_cycle_length: u8,
-        sprite_cycle_length: u8,
-        num_lod_levels: u8,
-        turnable: bool,
-        flippable: bool,
-        sprite_desc: &'static SpriteGridDesc,
-        offset_table: &'static [OverlayOffsets],
-    ) -> Self {
-        let expected_num_offsets = offset_cycle_length * num_lod_levels;
-        assert!(
-            offset_table.len() == expected_num_offsets as usize,
-            "Offset table size mismatch: expected {}, was {}",
-            expected_num_offsets,
-            offset_table.len()
-        );
-
-        let expected_columns =
-            (if turnable { NUM_TURN_LEVELS } else { 1 }) * sprite_cycle_length as usize;
-        assert!(
-            sprite_desc.columns as usize >= expected_columns,
-            "Sprite grid not wide enough for all turn levels + sprite cycle"
-        );
-        assert!(
-            sprite_desc.rows >= num_lod_levels as u32,
-            "Sprite grid not tall enough for all LOD levels"
-        );
-        Self {
-            racer,
-            offset_cycle_pos: 0,
-            sprite_cycle_pos: 0,
-            sprite_cycle_length,
-            offset_cycle_length,
-            num_lod_levels,
-            turnable,
-            flippable,
-            sprite_desc,
-            offset_table,
-        }
-    }
-}
-
-struct OverlayOffsets([(i32, i32); NUM_TURN_LEVELS]);
-
-const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
-    // LOD level 0
-    // Up cycle
-    OverlayOffsets([(0, -16), (-1, -16), (-3, -17), (-10, -19)]),
-    // Down cycle
-    OverlayOffsets([(0, -19), (-2, -19), (-6, -21), (-12, -21)]),
-    // LOD level 1
-    // Up cycle
-    OverlayOffsets([(0, -18), (0, -17), (-3, -17), (-8, -21)]),
-    // Down cycle
-    OverlayOffsets([(0, -21), (-2, -22), (-5, -22), (-12, -24)]),
-    // LOD level 2
-    // Up cycle
-    OverlayOffsets([(0, -21), (-1, -21), (-2, -22), (-6, -22)]),
-    // Down cycle
-    OverlayOffsets([(0, -23), (-2, -23), (-3, -24), (-9, -25)]),
-    // LOD level 3
-    // Up cycle
-    OverlayOffsets([(1, -23), (1, -23), (-4, -24), (-7, -24)]),
-    OverlayOffsets([(1, -24), (0, -25), (-5, -26), (-9, -26)]),
-];
-fn make_tire_overlay(racer: Entity) -> RacerOverlay {
-    RacerOverlay::new(racer, 2, 1, 4, true, true, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
 }
 
 // No cycle or LOD to worry about, unlike tires
@@ -176,15 +83,9 @@ fn make_sand_blast_overlay(racer: Entity) -> RacerOverlay {
     )
 }
 
-const NUM_RACER_LODS: usize = 4;
-
-const NUM_TURN_LEVELS: usize = 4;
-
-const MAX_TURN_RATE: f32 = 400.0;
-
-const RACER_MIN_SPEED: f32 = 1.4;
-pub const RACER_MAX_NORMAL_SPEED: f32 = 9.0;
-const RACER_MAX_TURBO_SPEED: f32 = 10.43;
+const PLAYER_MIN_SPEED: f32 = 1.4;
+pub const PLAYER_MAX_NORMAL_SPEED: f32 = 9.0;
+const PLAYER_MAX_TURBO_SPEED: f32 = RACER_MAX_SPEED;
 
 // TODO: Instead scale acceleration by how close we are to max speed.
 // Makes stopping less punishing while forcing a commitment to unlock turbo
@@ -199,20 +100,13 @@ const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
-const BIKE_SPRITE_Z: f32 = 100.0;
-const TIRE_SPRITE_Z: f32 = 100.1;
-const BRAKE_LIGHT_SPRITE_Z: f32 = 100.1;
-const SAND_BLAST_SPRITE_Z: f32 = 100.2;
+const BRAKE_LIGHT_OFFSET_Z: f32 = 0.1;
+const SAND_BLAST_OFFSET_Z: f32 = 0.2;
 
 const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
     rows: 3,
     columns: 6,
-};
-const TIRE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
-    tile_size: 16,
-    rows: 4,
-    columns: 4,
 };
 const BRAKE_LIGHT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 16,
@@ -230,50 +124,24 @@ const PLAYER_NOT_INIT: &str = "Player was not initialized";
 pub fn startup_player(
     mut commands: Commands,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    racer_assets: Res<RacerAssets>,
     asset_server: Res<AssetServer>,
 ) {
     let bike_tex = asset_server.load("textures/player_atlas.png");
     let bike_atlas = BIKE_SPRITE_DESC.make_atlas(bike_tex);
-    let tire_tex = asset_server.load("textures/tire_atlas.png");
-    let tire_atlas = TIRE_SPRITE_DESC.make_atlas(tire_tex);
     let brake_light_tex = asset_server.load("textures/brake_light_atlas.png");
     let brake_light_atlas = BRAKE_LIGHT_SPRITE_DESC.make_atlas(brake_light_tex);
     let sand_blast_tex = asset_server.load("textures/sand_blast_atlas.png");
     let sand_blast_atlas = SAND_BLAST_SPRITE_DESC.make_atlas(sand_blast_tex);
 
-    let bike_xform = Transform::from_translation(Vec3::new(
-        f32::conv(FIELD_WIDTH) * 0.5,
-        f32::conv(BIKE_SPRITE_DESC.tile_size) * 0.5,
-        BIKE_SPRITE_Z,
-    ));
+    let racer_ent = make_racer(
+        &mut commands,
+        racer_assets,
+        texture_atlases.add(bike_atlas),
+        -0.1,
+    );
 
-    let racer_ent = commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: texture_atlases.add(bike_atlas),
-            transform: bike_xform,
-            ..Default::default()
-        })
-        .insert(Racer {
-            lod_level: 0,
-            turn_rate: 0.0,
-            speed: RACER_MAX_NORMAL_SPEED,
-        })
-        .id();
-
-    let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_SPRITE_Z));
-
-    let tire_ent = commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: texture_atlases.add(tire_atlas),
-            transform: tire_xform,
-            ..Default::default()
-        })
-        .insert(Timer::from_seconds(0.1, false))
-        .insert(make_tire_overlay(racer_ent))
-        .insert(Tire {})
-        .id();
-
-    let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_SPRITE_Z));
+    let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_OFFSET_Z));
     let brake_light_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(brake_light_atlas),
@@ -286,7 +154,7 @@ pub fn startup_player(
     let sand_blast_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(sand_blast_atlas),
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, SAND_BLAST_SPRITE_Z)),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, SAND_BLAST_OFFSET_Z)),
             ..Default::default()
         })
         .insert(Timer::from_seconds(0.1, true))
@@ -295,7 +163,7 @@ pub fn startup_player(
 
     commands
         .entity(racer_ent)
-        .push_children(&[tire_ent, brake_light_ent, sand_blast_ent]);
+        .push_children(&[brake_light_ent, sand_blast_ent]);
 
     commands.insert_resource(Player {
         turn_buffer: [PlayerFrameTurn {
@@ -306,7 +174,6 @@ pub fn startup_player(
         offroad_shake_index: 0,
         is_braking: false,
         racer_ent,
-        tire_ent,
         brake_light_ent,
         sand_blast_ent,
     })
@@ -330,17 +197,7 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
         .with_system(
-            update_tires
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
-        )
-        .with_system(
             update_brake_lights
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
-        )
-        .with_system(
-            update_racer_offsets
                 .system()
                 .after(PlayerStageLabels::UpdatePlayerState),
         )
@@ -391,7 +248,7 @@ fn update_player_state(
     if player.is_braking {
         speed_change -= PLAYER_BRAKE_DRAG;
     } else if is_accelerating {
-        let accel_scale = f32::max(1.0 - (racer.speed / RACER_MAX_NORMAL_SPEED), 0.0);
+        let accel_scale = f32::max(1.0 - (racer.speed / PLAYER_MAX_NORMAL_SPEED), 0.0);
         let accel = PLAYER_SPEED_MIN_ACCEL
             + ((PLAYER_SPEED_MAX_ACCEL - PLAYER_SPEED_MIN_ACCEL) * accel_scale);
         speed_change += accel;
@@ -407,8 +264,8 @@ fn update_player_state(
     racer.speed = f32::clamp(
         // TODO: Applying delta time here may be a problem for boost end clamping
         racer.speed + (speed_change * TIME_STEP),
-        RACER_MIN_SPEED,
-        RACER_MAX_NORMAL_SPEED,
+        PLAYER_MIN_SPEED,
+        PLAYER_MAX_NORMAL_SPEED,
     );
 
     road_dyn.advance_z(racer.speed * TIME_STEP);
@@ -450,7 +307,7 @@ fn update_player_bike_sprites(
         .expect(PLAYER_NOT_INIT);
 
     // The player's sprite sheet is laid out differently than other racers, missing a lot
-    if racer.lod_level == 0 {
+    if racer.get_lod_level() == 0 {
         let RacerSpriteParams {
             turn_idx: sprite_x,
             flip_x,
@@ -460,28 +317,10 @@ fn update_player_bike_sprites(
         sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = flip_x;
     } else {
-        let sprite_x = racer.lod_level.cast();
+        let sprite_x = racer.get_lod_level().cast();
         let sprite_y = 1;
         sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = false;
-    }
-}
-
-fn update_tires(
-    mut overlay_query: Query<(&mut RacerOverlay, &mut Timer), With<Tire>>,
-    racer_query: Query<&Racer>,
-) {
-    for (mut overlay, mut timer) in overlay_query.iter_mut() {
-        let speed = racer_query.get(overlay.racer).map_or(0.0, |r| r.speed);
-
-        timer.tick(Duration::from_secs_f32(TIME_STEP));
-        if timer.finished() {
-            overlay.offset_cycle_pos = (overlay.offset_cycle_pos + 1) % overlay.offset_cycle_length;
-
-            let new_secs = get_tire_cycle_seconds(speed);
-            timer.set_duration(Duration::from_secs_f32(new_secs));
-            timer.reset();
-        }
     }
 }
 
@@ -506,50 +345,12 @@ fn update_sand_blasts(
     if is_offroad {
         timer.tick(Duration::from_secs_f32(TIME_STEP));
         if timer.just_finished() {
-            overlay.sprite_cycle_pos = (overlay.sprite_cycle_pos + 1) % overlay.sprite_cycle_length
+            overlay.sprite_cycle_pos =
+                (overlay.sprite_cycle_pos + 1) % overlay.get_sprite_cycle_length()
         }
     }
 
     visible.is_visible = is_offroad;
-}
-
-fn update_racer_offsets(
-    mut overlay_query: Query<(&RacerOverlay, &mut TextureAtlasSprite, &mut Transform)>,
-    racer_query: Query<&Racer>,
-) {
-    for (overlay, mut sprite, mut xform) in overlay_query.iter_mut() {
-        let (turn_rate, lod_level) = racer_query
-            .get(overlay.racer)
-            .map_or((0.0, 0), |r| (r.turn_rate, r.lod_level));
-
-        let RacerSpriteParams { turn_idx, flip_x } = get_turning_sprite_desc(turn_rate);
-
-        let lod_idx = u8::min(lod_level, overlay.num_lod_levels - 1);
-        let offsets_idx = (overlay.offset_cycle_length * lod_idx) + overlay.offset_cycle_pos;
-
-        let offsets = &overlay.offset_table[offsets_idx as usize];
-        let mut turn_level_offset = offsets.0[turn_idx as usize];
-
-        if flip_x {
-            turn_level_offset.0 = -turn_level_offset.0;
-        }
-        sprite.flip_x = if overlay.flippable { flip_x } else { false };
-
-        let sprite_x: u32 = if overlay.turnable {
-            (u32::conv(overlay.sprite_cycle_pos) * u32::conv(NUM_TURN_LEVELS)) + turn_idx
-        } else {
-            overlay.sprite_cycle_pos.cast()
-        };
-
-        // One row per LOD level, highest resolution first.
-        // Each LOD level has four columns, one for each distinct sprite based on how hard the racer is turning
-        sprite.index = overlay
-            .sprite_desc
-            .get_sprite_index(sprite_x, lod_idx as u32);
-
-        xform.translation.x = f32::conv(turn_level_offset.0);
-        xform.translation.y = f32::conv(turn_level_offset.1);
-    }
 }
 
 fn test_modify_player(
@@ -567,24 +368,4 @@ fn test_modify_player(
     if input.right == JoyrideInputState::JustPressed {
         racer.turn_rate = f32::min(racer.turn_rate + MAX_TURN_RATE / 4.0, MAX_TURN_RATE);
     }
-}
-
-struct RacerSpriteParams {
-    turn_idx: u32,
-    flip_x: bool,
-}
-
-fn get_turning_sprite_desc(turn_rate: f32) -> RacerSpriteParams {
-    let turn_div = turn_rate / (MAX_TURN_RATE / f32::conv(NUM_TURN_LEVELS));
-    let turn_div_trunc = i32::conv_trunc(turn_div);
-    let turn_idx = u32::min(3, u32::conv(turn_div_trunc.abs()));
-
-    RacerSpriteParams {
-        turn_idx,
-        flip_x: turn_div_trunc < 0,
-    }
-}
-
-fn get_tire_cycle_seconds(speed: f32) -> f32 {
-    f32::clamp((RACER_MAX_TURBO_SPEED / speed) / 16.0, 0.02, 4.0)
 }

@@ -5,7 +5,8 @@ use easy_cast::*;
 
 use crate::{
     joyride::{JoyrideGame, FIELD_HEIGHT, FIELD_WIDTH, TIME_STEP},
-    player::{Player, Racer, RACER_MAX_NORMAL_SPEED},
+    player::{Player, PLAYER_MAX_NORMAL_SPEED},
+    racer::Racer,
     util::SpriteGridDesc,
 };
 
@@ -190,7 +191,7 @@ fn update_speed_text(
 ) {
     let speed = racers.get(player.get_racer_ent()).map_or(0.0, |r| r.speed);
     let speed_mph =
-        u32::conv_nearest(speed * f32::conv(MAX_NORMAL_DISPLAY_SPEED) / RACER_MAX_NORMAL_SPEED);
+        u32::conv_nearest(speed * f32::conv(MAX_NORMAL_DISPLAY_SPEED) / PLAYER_MAX_NORMAL_SPEED);
 
     let digits: [u32; 3] = if speed_mph <= 999 {
         [speed_mph / 100, (speed_mph / 10) % 10, speed_mph % 10]

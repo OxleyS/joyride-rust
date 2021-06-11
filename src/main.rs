@@ -2,6 +2,7 @@ use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use easy_cast::*;
 use player::add_player_update_systems;
+use racer::add_racer_update_systems;
 use road::add_road_render_systems;
 use road::add_road_update_systems;
 use skybox::add_skybox_update_systems;
@@ -15,6 +16,7 @@ const WINDOW_HEIGHT: f32 = 960.0;
 
 mod joyride;
 mod player;
+mod racer;
 mod road;
 mod skybox;
 mod text;
@@ -30,6 +32,7 @@ fn main() {
     ingame_update_set = add_skybox_update_systems(ingame_update_set);
     ingame_update_set = add_player_update_systems(ingame_update_set);
     ingame_update_set = add_text_update_systems(ingame_update_set);
+    ingame_update_set = add_racer_update_systems(ingame_update_set);
 
     // We add road rendering to a non-fixed timestep. If we use a fixed timestep, the updated road
     // texture is sometimes used one (non-fixed) frame too late, leaving a gap of black pixels.
@@ -48,6 +51,11 @@ fn main() {
         })
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .add_plugins(DefaultPlugins)
+        .add_startup_stage_before(
+            StartupStage::Startup,
+            "racer startup",
+            SystemStage::parallel().with_system(racer::startup_racer.system()),
+        )
         .add_startup_system(skybox::startup_skybox.system())
         .add_startup_system(road::startup_road.system())
         .add_startup_system(player::startup_player.system())
