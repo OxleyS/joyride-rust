@@ -90,9 +90,9 @@ pub struct RoadDynamic {
     // Table of road X offsets. Affected by curvature
     x_map: Box<[f32; ROAD_DISTANCE]>,
 
-    // Table that specifies how fast we advance in the road tables as we draw on-screen lines.
+    // Table that maps on-screen pixel lines to entries in the other tables
     // Affected by hills
-    y_map: Box<[f32; ROAD_DISTANCE]>,
+    y_map: Box<[usize; MAX_ROAD_DRAW_HEIGHT]>,
 
     // The racer's offset from the center of the road
     pub x_offset: f32,
@@ -143,6 +143,7 @@ pub struct DrawParams {
 pub fn get_draw_params_on_road(
     road_static: &RoadStatic,
     road_dyn: &RoadDynamic,
+    x_pos: f32,
     z_pos: f32,
 ) -> Option<DrawParams> {
     let search_result_idx = road_static
@@ -155,10 +156,30 @@ pub fn get_draw_params_on_road(
     }
 
     let map_idx = search_result_idx - 1;
+    let scale = road_static.scale_map[map_idx];
+
+    let y_map_idx = {
+        let result = road_dyn.y_map.binary_search(&map_idx).unwrap_or_else(|x| x);
+        if result > 0 {
+            result - 1
+        } else {
+            result
+        }
+    };
+
+    if y_map_idx > road_dyn.draw_height {
+        return None;
+    }
+
+    let converged_x_offset = (road_dyn.x_offset + x_pos)
+        * (1.0 - (f32::conv(y_map_idx) / f32::conv(road_dyn.draw_height)));
 
     Some(DrawParams {
-        scale: road_static.scale_map[map_idx],
-        draw_pos: (0.0, f32::conv(map_idx)),
+        scale,
+        draw_pos: (
+            (road_dyn.x_map[map_idx] + converged_x_offset),
+            f32::conv(y_map_idx),
+        ),
     })
 }
 
@@ -183,12 +204,18 @@ pub fn startup_road(
 }
 
 pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set.with_system(
-        update_road
-            .system()
-            .label(RoadStageLabels::UpdateRoadTables),
-    )
-    //.with_system(test_curve_road.system())
+    system_set
+        .with_system(
+            update_road_curvature
+                .system()
+                .label(RoadStageLabels::UpdateRoadTables),
+        )
+        .with_system(
+            update_road_hills
+                .system()
+                .label(RoadStageLabels::UpdateRoadTables),
+        )
+        .with_system(test_curve_road.system())
 }
 
 pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
@@ -260,7 +287,7 @@ fn build_road_dynamic() -> RoadDynamic {
     let default_x = f32::conv(FIELD_WIDTH) * 0.5;
 
     let x_map = boxed_array![default_x; ROAD_DISTANCE];
-    let y_map = boxed_array![1.0; ROAD_DISTANCE];
+    let y_map = boxed_array![0; MAX_ROAD_DRAW_HEIGHT];
 
     RoadDynamic {
         x_map,
@@ -327,62 +354,101 @@ fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
     return segs[actual_idx].clone();
 }
 
-fn update_road(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>) {
-    // Convert ResMut to a regular mutable reference - otherwise Rust can't properly split borrows
-    // between individual struct fields, and complains about multiple-borrow
-    let road_dyn: &mut RoadDynamic = &mut road_dyn;
-
-    let mut cur_x = f32::conv(FIELD_WIDTH) * 0.5;
-    let mut cur_y = 1.0;
-    let mut delta_x = 0.0;
-    let mut delta_y = 0.0;
-
+fn map_road_quadratic<F: Fn(&RoadSegment) -> f32>(
+    coeff: QuadraticCoefficients,
+    initial_value: f32,
+    seg_value_func: F,
+    road_static: &RoadStatic,
+    segments: &[RoadSegment],
+    mut seg_idx: usize,
+    mut seg_pos: f32,
+    out_map: &mut [f32; ROAD_DISTANCE],
+) {
+    let mut cur_value = initial_value;
+    let mut delta_value = 0.0;
     let mut last_z = road_static.z_map[0];
+    let mut cur_seg = get_bounded_seg(&segments, seg_idx);
 
-    let segs = &road_dyn.segs;
-    let mut seg_idx = road_dyn.seg_idx;
-    let mut seg_pos = road_dyn.seg_pos;
-    let mut cur_seg = get_bounded_seg(&road_dyn.segs, seg_idx);
-
-    for (i, (out_x, out_y)) in road_dyn
-        .x_map
-        .iter_mut()
-        .zip(road_dyn.y_map.iter_mut())
-        .enumerate()
-    {
-        let cur_z = road_static.z_map[i];
+    for (out_value, cur_z) in out_map.iter_mut().zip(road_static.z_map.iter()) {
         let delta_z = cur_z - last_z;
 
         seg_pos += delta_z;
         if seg_pos > SEGMENT_LENGTH {
             seg_idx += 1;
-            cur_seg = get_bounded_seg(&segs, seg_idx);
+            cur_seg = get_bounded_seg(&segments, seg_idx);
         }
 
-        delta_x += (cur_seg.curve * CURVE_COEFF.x2) * delta_z;
-        delta_y += (cur_seg.hill * HILL_COEFF.x2) * delta_z;
+        let parameter = seg_value_func(&cur_seg);
 
-        cur_x += delta_x;
-        *out_x = cur_x + (cur_seg.curve * CURVE_COEFF.x);
-        cur_y += delta_y + (cur_seg.hill * HILL_COEFF.x);
-        *out_y = f32::max(cur_y, 0.00001); // Clamp to ensure we always advance in the tables when drawing
+        delta_value += (parameter * coeff.x2) * delta_z;
+        cur_value += delta_value;
+        *out_value = cur_value + (parameter * coeff.x);
 
-        last_z = cur_z;
+        last_z = *cur_z;
     }
+}
 
-    // TODO: Use when drawing?
+fn update_road_curvature(road_static: Res<RoadStatic>, mut road_dyn: ResMut<RoadDynamic>) {
+    // Convert ResMut to a regular mutable reference - otherwise Rust can't properly split borrows
+    // between individual struct fields, and complains about multiple-borrow
+    let road_dyn: &mut RoadDynamic = &mut road_dyn;
+
+    map_road_quadratic(
+        CURVE_COEFF,
+        f32::conv(FIELD_WIDTH) * 0.5,
+        |seg| seg.curve,
+        &road_static,
+        &road_dyn.segs,
+        road_dyn.seg_idx,
+        road_dyn.seg_pos,
+        &mut road_dyn.x_map,
+    );
+}
+
+struct HillScratchPad {
+    y_advancement_map: Box<[f32; ROAD_DISTANCE]>,
+}
+
+impl Default for HillScratchPad {
+    fn default() -> Self {
+        Self {
+            y_advancement_map: boxed_array!(1.0; ROAD_DISTANCE),
+        }
+    }
+}
+
+fn update_road_hills(
+    road_static: Res<RoadStatic>,
+    mut road_dyn: ResMut<RoadDynamic>,
+    mut scratch_pad: Local<HillScratchPad>,
+) {
+    map_road_quadratic(
+        HILL_COEFF,
+        1.0,
+        |seg| seg.hill,
+        &road_static,
+        &road_dyn.segs,
+        road_dyn.seg_idx,
+        road_dyn.seg_pos,
+        &mut scratch_pad.y_advancement_map,
+    );
+
     let mut draw_height = MAX_ROAD_DRAW_HEIGHT;
-    let mut flt_map_idx = 0.0;
+    let mut flt_map_idx: f32 = 0.0;
     for cur_line in 0..MAX_ROAD_DRAW_HEIGHT {
         let map_idx = usize::conv_trunc(flt_map_idx);
         if map_idx >= ROAD_DISTANCE {
             draw_height = cur_line;
             break;
         }
-        flt_map_idx += road_dyn.y_map[map_idx];
+        road_dyn.y_map[cur_line] = map_idx;
+
+        let advancement = f32::max(scratch_pad.y_advancement_map[map_idx], 0.00001); // Clamp to ensure we always advance in the tables when drawing
+        flt_map_idx += advancement;
     }
 
     road_dyn.draw_height = draw_height;
+    road_dyn.y_map[draw_height..MAX_ROAD_DRAW_HEIGHT].fill(ROAD_DISTANCE);
 }
 
 fn render_road(
@@ -391,8 +457,6 @@ fn render_road(
     mut road_draw: ResMut<RoadDrawing>,
     mut textures: ResMut<Assets<Texture>>,
 ) {
-    let mut flt_map_idx: f32 = 0.0;
-    let z_offset = road_dyn.z_offset;
     let field_width: usize = FIELD_WIDTH.cast();
     let colors = &road_static.colors;
 
@@ -400,13 +464,11 @@ fn render_road(
 
     // Assuming no curvature, focus the far end of the road to the center of the screen.
     // This ensures the player is "looking down the road" at all times.
-    // TODO: The divisor will need to match the actual draw distance when hills are a thing.
-    // We'll need to calculate the final draw distance beforehand
     let delta_x_offset = -x_offset / f32::conv(road_dyn.draw_height);
 
     // Draw line-by-line, starting from the bottom
     for cur_line in (0..MAX_ROAD_DRAW_HEIGHT).rev() {
-        let map_idx: usize = flt_map_idx.cast_trunc();
+        let map_idx: usize = road_dyn.y_map[(MAX_ROAD_DRAW_HEIGHT - 1) - cur_line];
         let px_line = road_draw
             .draw_buffer
             .get_mut((cur_line * field_width)..((cur_line + 1) * field_width))
@@ -435,7 +497,8 @@ fn render_road(
         };
 
         // Switch the exact color used for each part of the road, based on Z
-        let num_color_switches = i32::conv_trunc((road_z + z_offset) / COLOR_SWITCH_Z_INTERVAL);
+        let num_color_switches =
+            i32::conv_trunc((road_z + road_dyn.z_offset) / COLOR_SWITCH_Z_INTERVAL);
         let shift_color = num_color_switches % 2 != 0;
 
         let road_center = road_dyn.x_map[map_idx] + x_offset;
@@ -472,7 +535,6 @@ fn render_road(
             *px = color.from_current_into_big_endian();
         }
 
-        flt_map_idx += road_dyn.y_map[map_idx];
         x_offset += delta_x_offset;
     }
 

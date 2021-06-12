@@ -106,7 +106,7 @@ impl RacerOverlay {
     }
 }
 
-const RACER_BASE_Z: f32 = 100.0;
+const RACER_BASE_Z: f32 = 300.0;
 pub const RACER_MAX_SPEED: f32 = 10.43;
 pub const MAX_TURN_RATE: f32 = 400.0;
 const NUM_RACER_LODS: usize = 4;
@@ -244,7 +244,7 @@ fn update_racer_offsets(
 
 fn update_racer_z(mut query: Query<(&Racer, &mut Transform)>) {
     for (racer, mut xform) in query.iter_mut() {
-        xform.translation.z = RACER_BASE_Z + xform.translation.y + racer.z_bias;
+        xform.translation.z = RACER_BASE_Z - xform.translation.y + racer.z_bias;
     }
 }
 

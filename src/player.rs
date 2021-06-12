@@ -137,7 +137,7 @@ pub fn startup_player(
         &mut commands,
         racer_assets,
         texture_atlases.add(bike_atlas),
-        -0.1,
+        0.5,
     );
 
     let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_OFFSET_Z));

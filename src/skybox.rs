@@ -7,7 +7,7 @@ use crate::road::{RoadDynamic, RoadStageLabels, ROAD_DISTANCE};
 const SKYBOX_SPRITE_Z: f32 = 0.0;
 
 // How quickly the skybox scrolls downward when the road goes uphill
-const SKYBOX_UPHILL_SCROLL_SCALAR: f32 = 0.3;
+const SKYBOX_UPHILL_SCROLL_SCALAR: f32 = 0.5;
 
 struct Skybox {
     tex: Handle<Texture>,

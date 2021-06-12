@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
-    joyride::FIELD_WIDTH,
+    player::PlayerStageLabels,
     racer::{make_racer, RacerAssets},
-    road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
+    road::{get_draw_params_on_road, RoadDynamic, RoadStageLabels, RoadStatic},
     util::SpriteGridDesc,
 };
 
@@ -43,13 +43,18 @@ pub fn startup_rival(
 
     commands.entity(racer_ent).insert(Rival {
         palette: RivalPalette::Green,
-        x_pos: 0.0,
+        x_pos: 20.0,
         z_pos: 10.5,
     });
 }
 
 pub fn add_rival_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set.with_system(update_rival.system())
+    system_set.with_system(
+        update_rival
+            .system()
+            .after(PlayerStageLabels::UpdatePlayerRoadPosition)
+            .after(RoadStageLabels::UpdateRoadTables),
+    )
 }
 
 fn update_rival(
@@ -58,11 +63,12 @@ fn update_rival(
     road_dyn: Res<RoadDynamic>,
 ) {
     for (rival, mut visible, mut xform) in query.iter_mut() {
-        let draw_params = get_draw_params_on_road(&road_static, &road_dyn, rival.z_pos);
-        if let Some(draw_pos) = draw_params {
-            xform.translation.x = f32::conv(FIELD_WIDTH) * 0.5;
+        let draw_params =
+            get_draw_params_on_road(&road_static, &road_dyn, rival.x_pos, rival.z_pos);
+        if let Some(draw_params) = draw_params {
+            xform.translation.x = draw_params.draw_pos.0;
             xform.translation.y =
-                f32::conv(draw_pos.draw_pos.1) + (f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5);
+                draw_params.draw_pos.1 + (f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5);
             visible.is_visible = true;
         } else {
             visible.is_visible = false;
