@@ -43,8 +43,8 @@ pub fn startup_rival(
 
     commands.entity(racer_ent).insert(Rival {
         palette: RivalPalette::Green,
-        x_pos: 20.0,
-        z_pos: 10.5,
+        x_pos: 50.0,
+        z_pos: 1.5,
     });
 }
 
@@ -71,6 +71,7 @@ fn update_rival(
                 draw_params.draw_pos.1 + (f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5);
             visible.is_visible = true;
         } else {
+            // TODO: Will not hide children!
             visible.is_visible = false;
         }
     }

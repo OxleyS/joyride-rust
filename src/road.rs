@@ -215,7 +215,7 @@ pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .label(RoadStageLabels::UpdateRoadTables),
         )
-    //.with_system(test_curve_road.system())
+        .with_system(test_curve_road.system())
 }
 
 pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
@@ -319,9 +319,11 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
 
     if input.pressed(KeyCode::A) {
         road_dyn.segs[0].curve -= curve_amt;
+        road_dyn.segs[1].curve -= curve_amt;
     }
     if input.pressed(KeyCode::D) {
         road_dyn.segs[0].curve += curve_amt;
+        road_dyn.segs[1].curve += curve_amt;
     }
     if input.pressed(KeyCode::J) {
         road_dyn.segs[1].curve -= curve_amt;
