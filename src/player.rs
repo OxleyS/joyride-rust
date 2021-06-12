@@ -15,7 +15,8 @@ use crate::{
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 pub enum PlayerStageLabels {
-    UpdatePlayerState,
+    UpdatePlayerDriving,
+    UpdatePlayerRoadPosition,
 }
 
 #[derive(Clone, Copy)]
@@ -30,8 +31,6 @@ const OFFROAD_SHAKE_OFFSETS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, -1.0), (1.0,
 
 pub struct Player {
     turn_buffer: [PlayerFrameTurn; TURN_BUFFER_SIZE],
-
-    is_braking: bool,
 
     offroad_shake_index: usize,
     offroad_shake_timer: Timer,
@@ -103,7 +102,7 @@ const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
 const BRAKE_LIGHT_OFFSET_Z: f32 = 0.1;
 const SAND_BLAST_OFFSET_Z: f32 = 0.2;
 
-const BIKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
+const PLAYER_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
     rows: 3,
     columns: 6,
@@ -128,7 +127,7 @@ pub fn startup_player(
     asset_server: Res<AssetServer>,
 ) {
     let bike_tex = asset_server.load("textures/player_atlas.png");
-    let bike_atlas = BIKE_SPRITE_DESC.make_atlas(bike_tex);
+    let bike_atlas = PLAYER_SPRITE_DESC.make_atlas(bike_tex);
     let brake_light_tex = asset_server.load("textures/brake_light_atlas.png");
     let brake_light_atlas = BRAKE_LIGHT_SPRITE_DESC.make_atlas(brake_light_tex);
     let sand_blast_tex = asset_server.load("textures/sand_blast_atlas.png");
@@ -172,7 +171,6 @@ pub fn startup_player(
         }; TURN_BUFFER_SIZE],
         offroad_shake_timer: Timer::from_seconds(1.0 / 15.0, true),
         offroad_shake_index: 0,
-        is_braking: false,
         racer_ent,
         brake_light_ent,
         sand_blast_ent,
@@ -187,35 +185,49 @@ pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
         //         .label(PlayerStageLabels::UpdatePlayerState),
         // )
         .with_system(
-            update_player_state
+            update_player_turning
                 .system()
-                .label(PlayerStageLabels::UpdatePlayerState),
+                .label(PlayerStageLabels::UpdatePlayerDriving),
+        )
+        .with_system(
+            update_player_speed
+                .system()
+                .label(PlayerStageLabels::UpdatePlayerDriving),
+        )
+        .with_system(
+            update_player_road_position
+                .system()
+                .label(PlayerStageLabels::UpdatePlayerRoadPosition)
+                .after(PlayerStageLabels::UpdatePlayerDriving),
+        )
+        .with_system(
+            update_player_shake
+                .system()
+                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
         )
         .with_system(
             update_player_bike_sprites
                 .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
+                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
         )
         .with_system(
             update_brake_lights
                 .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
+                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
         )
         .with_system(
             update_sand_blasts
                 .system()
-                .after(PlayerStageLabels::UpdatePlayerState),
+                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
         )
 }
 
-fn update_player_state(
+fn update_player_turning(
     mut player: ResMut<Player>,
     input: Res<JoyrideInput>,
-    mut racers: Query<(&mut Racer, &mut Transform)>,
-    road_static: Res<RoadStatic>,
-    mut road_dyn: ResMut<RoadDynamic>,
+    mut racers: Query<&mut Racer>,
 ) {
-    let (mut racer, mut xform) = racers.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
+    let mut racer = racers.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
 
     let next_turn = player.turn_buffer[0];
     player.turn_buffer.copy_within(1.., 0);
@@ -240,12 +252,22 @@ fn update_player_state(
     } else if racer.turn_rate > 0.0 {
         racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
     }
+}
 
+fn update_player_speed(
+    input: Res<JoyrideInput>,
+    player: Res<Player>,
+    mut racers: Query<&mut Racer>,
+    road_static: Res<RoadStatic>,
+    road_dyn: Res<RoadDynamic>,
+) {
+    let mut racer = racers.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
     let mut speed_change = 0.0;
 
-    player.is_braking = input.brake.is_pressed();
+    let is_braking = input.brake.is_pressed();
     let is_accelerating = input.accel.is_pressed();
-    if player.is_braking {
+
+    if is_braking {
         speed_change -= PLAYER_BRAKE_DRAG;
     } else if is_accelerating {
         let accel_scale = f32::max(1.0 - (racer.speed / PLAYER_MAX_NORMAL_SPEED), 0.0);
@@ -267,19 +289,33 @@ fn update_player_state(
         PLAYER_MIN_SPEED,
         PLAYER_MAX_NORMAL_SPEED,
     );
+}
 
+fn update_player_road_position(
+    player: Res<Player>,
+    racers: Query<&Racer>,
+    mut road_dyn: ResMut<RoadDynamic>,
+) {
+    let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
     road_dyn.advance_z(racer.speed * TIME_STEP);
 
     let mut road_x = road_dyn.x_offset;
-
     road_x -= racer.turn_rate * TIME_STEP;
 
     // Apply the road's curvature against the player
     road_x += road_dyn.get_seg_curvature() * TIME_STEP * PLAYER_ROAD_CURVE_SCALAR * racer.speed;
-
     road_dyn.x_offset = f32::clamp(road_x, -500.0, 500.0);
+}
 
-    let xform_offset = if is_offroad {
+fn update_player_shake(
+    mut player: ResMut<Player>,
+    mut xforms: Query<&mut Transform>,
+    road_static: Res<RoadStatic>,
+    road_dyn: Res<RoadDynamic>,
+) {
+    let mut xform = xforms.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
+
+    let xform_offset = if is_offroad(&road_static, &road_dyn) {
         player
             .offroad_shake_timer
             .tick(Duration::from_secs_f32(TIME_STEP));
@@ -295,7 +331,7 @@ fn update_player_state(
     };
 
     xform.translation.x = (f32::conv(FIELD_WIDTH) * 0.5) + xform_offset.0;
-    xform.translation.y = (f32::conv(BIKE_SPRITE_DESC.tile_size) * 0.5) + xform_offset.1;
+    xform.translation.y = (f32::conv(PLAYER_SPRITE_DESC.tile_size) * 0.5) + xform_offset.1;
 }
 
 fn update_player_bike_sprites(
@@ -314,22 +350,26 @@ fn update_player_bike_sprites(
         } = get_turning_sprite_desc(racer.turn_rate);
 
         let sprite_y = 0;
-        sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+        sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = flip_x;
     } else {
         let sprite_x = racer.get_lod_level().cast();
         let sprite_y = 1;
-        sprite.index = BIKE_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+        sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = false;
     }
 }
 
-fn update_brake_lights(player: Res<Player>, mut query: Query<&mut Visible>) {
+fn update_brake_lights(
+    player: Res<Player>,
+    input: Res<JoyrideInput>,
+    mut query: Query<&mut Visible>,
+) {
     let mut visible = query
         .get_mut(player.brake_light_ent)
         .expect(PLAYER_NOT_INIT);
 
-    visible.is_visible = player.is_braking;
+    visible.is_visible = input.brake.is_pressed();
 }
 
 fn update_sand_blasts(

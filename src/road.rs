@@ -135,6 +135,33 @@ pub fn is_offroad(road_static: &RoadStatic, road_dyn: &RoadDynamic) -> bool {
     road_dyn.x_offset.abs() > (PAVEMENT_WIDTH + RUMBLE_STRIP_WIDTH) * road_static.scale_map[0]
 }
 
+pub struct DrawParams {
+    pub scale: f32,
+    pub draw_pos: (f32, f32),
+}
+
+pub fn get_draw_params_on_road(
+    road_static: &RoadStatic,
+    road_dyn: &RoadDynamic,
+    z_pos: f32,
+) -> Option<DrawParams> {
+    let search_result_idx = road_static
+        .z_map
+        .binary_search_by(|z| z.partial_cmp(&z_pos).unwrap())
+        .unwrap_or_else(|x| x);
+
+    if search_result_idx == 0 || search_result_idx > ROAD_DISTANCE {
+        return None;
+    }
+
+    let map_idx = search_result_idx - 1;
+
+    Some(DrawParams {
+        scale: road_static.scale_map[map_idx],
+        draw_pos: (0.0, f32::conv(map_idx)),
+    })
+}
+
 struct RoadDrawing {
     // Colors are expected to be RGBA
     draw_buffer: Box<[u32; NUM_ROAD_PIXELS]>,
