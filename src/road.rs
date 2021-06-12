@@ -171,8 +171,8 @@ pub fn get_draw_params_on_road(
         return None;
     }
 
-    let converged_x_offset = (road_dyn.x_offset + x_pos)
-        * (1.0 - (f32::conv(y_map_idx) / f32::conv(road_dyn.draw_height)));
+    let converged_x_offset =
+        (road_dyn.x_offset + x_pos) * (1.0 - (f32::conv(map_idx) / f32::conv(ROAD_DISTANCE)));
 
     Some(DrawParams {
         scale,
@@ -215,7 +215,7 @@ pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
                 .system()
                 .label(RoadStageLabels::UpdateRoadTables),
         )
-        .with_system(test_curve_road.system())
+    //.with_system(test_curve_road.system())
 }
 
 pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
@@ -331,9 +331,11 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
     }
     if input.pressed(KeyCode::I) {
         road_dyn.segs[0].hill -= hill_amt;
+        road_dyn.segs[1].hill -= hill_amt;
     }
     if input.pressed(KeyCode::K) {
         road_dyn.segs[0].hill += hill_amt;
+        road_dyn.segs[1].hill += hill_amt;
     }
     if input.pressed(KeyCode::W) {
         road_dyn.seg_pos = f32::min(SEGMENT_LENGTH, road_dyn.seg_pos + pos_amt);
@@ -460,12 +462,6 @@ fn render_road(
     let field_width: usize = FIELD_WIDTH.cast();
     let colors = &road_static.colors;
 
-    let mut x_offset = road_dyn.x_offset;
-
-    // Assuming no curvature, focus the far end of the road to the center of the screen.
-    // This ensures the player is "looking down the road" at all times.
-    let delta_x_offset = -x_offset / f32::conv(road_dyn.draw_height);
-
     // Draw line-by-line, starting from the bottom
     for cur_line in (0..MAX_ROAD_DRAW_HEIGHT).rev() {
         let map_idx: usize = road_dyn.y_map[(MAX_ROAD_DRAW_HEIGHT - 1) - cur_line];
@@ -485,6 +481,11 @@ fn render_road(
 
         let road_z = road_static.z_map[map_idx];
         let road_scale = road_static.scale_map[map_idx];
+
+        // Assuming no curvature, focus the far end of the road to the center of the screen.
+        // This ensures the player is "looking down the road" at all times.
+        // TODO: Bake this into the x_map
+        let x_offset = road_dyn.x_offset * (1.0 - (f32::conv(map_idx) / f32::conv(ROAD_DISTANCE)));
 
         let is_seg_boundary = if DEBUG_VIS_SEGMENTS && map_idx > 0 {
             let seg_num = usize::conv_trunc((road_z + road_dyn.seg_pos) / SEGMENT_LENGTH);
@@ -511,14 +512,14 @@ fn render_road(
             let x: f32 = x.cast();
 
             // Calculate the distance from the center of the road
-            let x_offset = (x - road_center).abs();
+            let distance_from_center = (x - road_center).abs();
 
             // Use that distance to determine the part of the road this pixel is on
-            let shiftable: ShiftableColor = if x_offset <= center_line_width {
+            let shiftable: ShiftableColor = if distance_from_center <= center_line_width {
                 ShiftableColor(colors.center_line, colors.pavement.1)
-            } else if x_offset <= road_width {
+            } else if distance_from_center <= road_width {
                 colors.pavement
-            } else if x_offset <= road_width + rumble_width {
+            } else if distance_from_center <= road_width + rumble_width {
                 colors.rumble_strip
             } else {
                 colors.offroad
@@ -534,8 +535,6 @@ fn render_road(
             };
             *px = color.from_current_into_big_endian();
         }
-
-        x_offset += delta_x_offset;
     }
 
     // Copy the pixel data to the texture
