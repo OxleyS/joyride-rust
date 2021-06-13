@@ -230,6 +230,7 @@ fn update_player_turning(
 ) {
     let mut racer = racers.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
 
+    // TODO: This buffering algorithm will change turn mechanics based on framerate. Use a time-based buffer instead
     let next_turn = player.turn_buffer[0];
     player.turn_buffer.copy_within(1.., 0);
     player.turn_buffer[TURN_BUFFER_SIZE - 1] = PlayerFrameTurn {

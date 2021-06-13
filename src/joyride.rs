@@ -86,6 +86,8 @@ fn startup_joyride(mut commands: Commands) {
 
 pub fn build_app(app: &mut AppBuilder) {
     app.add_startup_system(startup_joyride.system());
+
+    // TODO: Probably not needed now that we changed how fixed framerate works
     app.add_system_to_stage(
         CoreStage::PreUpdate,
         update_instant_input
@@ -96,7 +98,7 @@ pub fn build_app(app: &mut AppBuilder) {
     app.add_system_set_to_stage(
         CoreStage::PreUpdate,
         SystemSet::new()
-            .with_run_criteria(FixedTimestep::step(TIME_STEP.cast()))
+            //.with_run_criteria(FixedTimestep::step(TIME_STEP.cast()))
             .with_system(update_fixedframe_input.system())
             .after(InputStageLabels::UpdateInstantInput),
     );

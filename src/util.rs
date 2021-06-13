@@ -55,7 +55,6 @@ pub fn spawn_empty_parent<'a, 'b>(
     commands: &'b mut Commands<'a>,
     position: Vec3,
 ) -> EntityCommands<'a, 'b> {
-    // TODO: Add a component + system to hide children if this is invisible
     let mut ent_commands = commands.spawn();
     ent_commands
         .insert(Transform::from_translation(position))

@@ -1,7 +1,6 @@
 use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use bevy::render::RenderSystem;
-use bevy::transform::TransformSystem;
 use easy_cast::*;
 use player::add_player_update_systems;
 use racer::add_racer_update_systems;
@@ -14,9 +13,12 @@ use text::add_text_update_systems;
 #[cfg(target_arch = "wasm32")]
 use bevy_webgl2;
 
+use crate::joyride::TIME_STEP;
+
 const WINDOW_WIDTH: f32 = 1280.0;
 const WINDOW_HEIGHT: f32 = 960.0;
 
+mod fixed_framerate;
 mod joyride;
 mod player;
 mod racer;
@@ -30,8 +32,7 @@ fn main() {
     let mut app_builder = App::build();
 
     // TODO: Refactor all this stuff to work like in joyride.rs
-    let mut ingame_update_set =
-        SystemSet::new().with_run_criteria(FixedTimestep::step(joyride::TIME_STEP.cast()));
+    let mut ingame_update_set = SystemSet::new(); //.with_run_criteria(FixedTimestep::step(joyride::TIME_STEP.cast()));
     ingame_update_set = add_road_update_systems(ingame_update_set);
     ingame_update_set = add_skybox_update_systems(ingame_update_set);
     ingame_update_set = add_player_update_systems(ingame_update_set);
@@ -79,6 +80,10 @@ fn main() {
 
     #[cfg(target_arch = "wasm32")]
     app_builder.add_plugin(bevy_webgl2::WebGL2Plugin);
+
+    app_builder.app.schedule.set_run_criteria(
+        fixed_framerate::create_fixed_framerate_run_criteria(TIME_STEP.cast()).system(),
+    );
 
     app_builder.run();
 }
