@@ -1,5 +1,7 @@
 use bevy::core::FixedTimestep;
 use bevy::prelude::*;
+use bevy::render::RenderSystem;
+use bevy::transform::TransformSystem;
 use easy_cast::*;
 use player::add_player_update_systems;
 use racer::add_racer_update_systems;
@@ -64,6 +66,12 @@ fn main() {
         .add_startup_system(player::startup_player.system())
         .add_startup_system(rival::startup_rival.system())
         .add_startup_system(text::startup_text.system())
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            util::propagate_visibility_system
+                .system()
+                .before(RenderSystem::VisibleEntities),
+        )
         .add_system_set(ingame_update_set)
         .add_system_set_to_stage(CoreStage::PostUpdate, ingame_render_set);
 

@@ -10,7 +10,7 @@ use crate::{
         RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED, RACER_ROAD_CURVE_SCALAR,
     },
     road::{is_offroad, RoadDynamic, RoadStatic},
-    util::SpriteGridDesc,
+    util::{LocalVisible, SpriteGridDesc},
 };
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
@@ -147,6 +147,7 @@ pub fn startup_player(
             ..Default::default()
         })
         .insert(make_brake_light_overlay(racer_ent))
+        .insert(LocalVisible::default())
         .id();
 
     let sand_blast_ent = commands
@@ -157,6 +158,7 @@ pub fn startup_player(
         })
         .insert(Timer::from_seconds(0.1, true))
         .insert(make_sand_blast_overlay(racer_ent))
+        .insert(LocalVisible::default())
         .id();
 
     commands

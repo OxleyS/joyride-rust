@@ -3,7 +3,10 @@ use std::time::Duration;
 use bevy::prelude::*;
 use easy_cast::*;
 
-use crate::{joyride::TIME_STEP, util::SpriteGridDesc};
+use crate::{
+    joyride::TIME_STEP,
+    util::{LocalVisible, SpriteGridDesc},
+};
 
 pub struct OverlayOffsets(pub [(i32, i32); NUM_TURN_LEVELS]);
 
@@ -145,7 +148,7 @@ pub fn startup_racer(
 pub fn add_racer_update_systems(system_set: SystemSet) -> SystemSet {
     system_set
         .with_system(update_tires.system())
-        .with_system(update_racer_offsets.system())
+        .with_system(update_racer_overlays.system())
         .with_system(update_racer_z.system())
 }
 
@@ -166,6 +169,7 @@ pub fn make_racer(
             speed: 0.0,
             z_bias,
         })
+        .insert(LocalVisible::default())
         .id();
 
     let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_Z_OFFSET));
@@ -176,6 +180,7 @@ pub fn make_racer(
             transform: tire_xform,
             ..Default::default()
         })
+        .insert(LocalVisible::default())
         .insert(Timer::from_seconds(0.1, false))
         .insert(make_tire_overlay(racer_ent))
         .insert(Tire {})
@@ -203,10 +208,11 @@ fn update_tires(
     }
 }
 
-fn update_racer_offsets(
+// TODO: This needs to run after the player and all rivals have updated, or we get off-by-one-frames
+fn update_racer_overlays(
     mut overlay_query: Query<(
         &RacerOverlay,
-        &mut Visible,
+        &mut LocalVisible,
         &mut TextureAtlasSprite,
         &mut Transform,
     )>,
