@@ -63,7 +63,7 @@ fn main() {
         .add_startup_system(road::startup_road.system())
         .add_startup_system(player::startup_player.system())
         .add_startup_system(rival::startup_rival.system())
-        .add_startup_system(text::startup_speed_text.system())
+        .add_startup_system(text::startup_text.system())
         .add_system_set(ingame_update_set)
         .add_system_set_to_stage(CoreStage::PostUpdate, ingame_render_set);
 

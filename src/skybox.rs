@@ -5,6 +5,7 @@ use crate::{
     player::Player,
     racer::Racer,
     road::{RoadDynamic, RoadStageLabels, ROAD_DISTANCE},
+    util::spawn_empty_parent,
 };
 
 // Used for layering with other sprites
@@ -26,10 +27,7 @@ pub fn startup_skybox(
     asset_server: Res<AssetServer>,
 ) {
     let tex = asset_server.load("textures/sky_bg.png");
-    commands
-        .spawn()
-        .insert(Transform::from_xyz(0.0, 0.0, SKYBOX_SPRITE_Z))
-        .insert(GlobalTransform::default())
+    spawn_empty_parent(&mut commands, Vec3::new(0.0, 0.0, SKYBOX_SPRITE_Z))
         .insert(Skybox {})
         .with_children(|cmd| {
             let x_positions: [f32; 3] = [-SKYBOX_SIZE.0, 0.0, SKYBOX_SIZE.0];

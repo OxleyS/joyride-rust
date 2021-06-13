@@ -1,3 +1,4 @@
+use bevy::ecs::system::EntityCommands;
 use bevy::prelude::TextureAtlas;
 
 use bevy::prelude::*;
@@ -38,4 +39,16 @@ impl SpriteGridDesc {
         let tile_size = Vec2::new(self.tile_size.cast(), self.tile_size.cast());
         TextureAtlas::from_grid(texture, tile_size, self.columns.cast(), self.rows.cast())
     }
+}
+
+pub fn spawn_empty_parent<'a, 'b>(
+    commands: &'b mut Commands<'a>,
+    position: Vec3,
+) -> EntityCommands<'a, 'b> {
+    // TODO: Add a component + system to hide children if this is invisible
+    let mut ent_commands = commands.spawn();
+    ent_commands
+        .insert(Transform::from_translation(position))
+        .insert(GlobalTransform::default());
+    ent_commands
 }

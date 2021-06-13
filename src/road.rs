@@ -190,6 +190,14 @@ struct RoadDrawing {
     draw_buffer: Box<[u32; NUM_ROAD_PIXELS]>,
 }
 
+impl Default for RoadDrawing {
+    fn default() -> Self {
+        Self {
+            draw_buffer: boxed_array![0; NUM_ROAD_PIXELS],
+        }
+    }
+}
+
 pub fn startup_road(
     mut commands: Commands,
     mut textures: ResMut<Assets<Texture>>,
@@ -200,9 +208,6 @@ pub fn startup_road(
 
     commands.insert_resource(road_static);
     commands.insert_resource(road_dynamic);
-    commands.insert_resource(RoadDrawing {
-        draw_buffer: boxed_array![0; NUM_ROAD_PIXELS],
-    });
 }
 
 pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
@@ -460,7 +465,7 @@ fn update_road_hills(
 fn render_road(
     road_static: Res<RoadStatic>,
     road_dyn: Res<RoadDynamic>,
-    mut road_draw: ResMut<RoadDrawing>,
+    mut road_draw: Local<RoadDrawing>,
     mut textures: ResMut<Assets<Texture>>,
 ) {
     let field_width: usize = FIELD_WIDTH.cast();

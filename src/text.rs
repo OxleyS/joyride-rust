@@ -7,21 +7,17 @@ use crate::{
     joyride::{JoyrideGame, FIELD_HEIGHT, FIELD_WIDTH, TIME_STEP},
     player::{Player, PLAYER_MAX_NORMAL_SPEED},
     racer::Racer,
-    util::SpriteGridDesc,
+    util::{spawn_empty_parent, SpriteGridDesc},
 };
 
 struct SpeedText {
     num_ents: [Entity; 3],
     flash_timer: Timer,
     should_flash: bool,
-
-    km_ent: Entity,
-    speed_ent: Entity,
 }
 
 struct TimeText {
-    time_ent: Entity,
-    num_ents: [Entity; 2],
+    number_ents: [Entity; 2],
 }
 
 const MAX_NORMAL_DISPLAY_SPEED: u32 = 280;
@@ -49,7 +45,7 @@ const SMALL_TEXT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const TEXT_NOT_INIT: &str = "Text not initialized";
 
-pub fn startup_speed_text(
+pub fn startup_text(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
@@ -87,7 +83,7 @@ pub fn startup_speed_text(
             .id()
     }
 
-    let km_ent = commands
+    let km_text_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: small_texts_atlas.clone(),
             sprite: TextureAtlasSprite {
@@ -104,7 +100,7 @@ pub fn startup_speed_text(
         })
         .id();
 
-    let speed_ent = commands
+    let speed_text_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: small_texts_atlas.clone(),
             sprite: TextureAtlasSprite {
@@ -121,7 +117,16 @@ pub fn startup_speed_text(
         })
         .id();
 
-    let time_ent = commands
+    spawn_empty_parent(&mut commands, Vec3::ZERO)
+        .insert(SpeedText {
+            num_ents: speed_num_ents,
+            flash_timer: Timer::from_seconds(1.0, true),
+            should_flash: false,
+        })
+        .push_children(&[km_text_ent, speed_text_ent])
+        .push_children(&speed_num_ents);
+
+    let time_text_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: small_texts_atlas,
             sprite: TextureAtlasSprite {
@@ -163,18 +168,12 @@ pub fn startup_speed_text(
             .id(),
     ];
 
-    commands.insert_resource(SpeedText {
-        num_ents: speed_num_ents,
-        flash_timer: Timer::from_seconds(1.0, true),
-        should_flash: false,
-        km_ent,
-        speed_ent,
-    });
-
-    commands.insert_resource(TimeText {
-        time_ent,
-        num_ents: time_num_ents,
-    })
+    spawn_empty_parent(&mut commands, Vec3::ZERO)
+        .insert(TimeText {
+            number_ents: time_num_ents,
+        })
+        .push_children(&[time_text_ent])
+        .push_children(&time_num_ents);
 }
 
 pub fn add_text_update_systems(system_set: SystemSet) -> SystemSet {
@@ -186,7 +185,7 @@ pub fn add_text_update_systems(system_set: SystemSet) -> SystemSet {
 fn update_speed_text(
     player: Res<Player>,
     racers: Query<&Racer>,
-    mut speed_text: ResMut<SpeedText>,
+    mut speed_texts: Query<&mut SpeedText>,
     mut texts: Query<&mut TextureAtlasSprite>,
 ) {
     let speed = racers.get(player.get_racer_ent()).map_or(0.0, |r| r.speed);
@@ -199,38 +198,40 @@ fn update_speed_text(
         [9, 9, 9]
     };
 
-    if speed_mph >= MAX_NORMAL_DISPLAY_SPEED {
-        speed_text.flash_timer.unpause();
-    } else {
-        speed_text.should_flash = true;
-        speed_text.flash_timer.pause();
-        speed_text.flash_timer.reset();
-    }
+    for mut speed_text in speed_texts.iter_mut() {
+        if speed_mph >= MAX_NORMAL_DISPLAY_SPEED {
+            speed_text.flash_timer.unpause();
+        } else {
+            speed_text.should_flash = true;
+            speed_text.flash_timer.pause();
+            speed_text.flash_timer.reset();
+        }
 
-    if speed_text
-        .flash_timer
-        .tick(Duration::from_secs_f32(TIME_STEP))
-        .just_finished()
-    {
-        speed_text.should_flash = !speed_text.should_flash;
-    }
+        if speed_text
+            .flash_timer
+            .tick(Duration::from_secs_f32(TIME_STEP))
+            .just_finished()
+        {
+            speed_text.should_flash = !speed_text.should_flash;
+        }
 
-    let color = if speed_text.should_flash && speed_mph >= MAX_NORMAL_DISPLAY_SPEED {
-        Color::RED
-    } else {
-        Color::WHITE
-    };
+        let color = if speed_text.should_flash && speed_mph >= MAX_NORMAL_DISPLAY_SPEED {
+            Color::RED
+        } else {
+            Color::WHITE
+        };
 
-    for (digit, ent) in digits.iter().zip(&speed_text.num_ents) {
-        let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);
-        sprite.index = *digit;
-        sprite.color = color;
+        for (digit, ent) in digits.iter().zip(&speed_text.num_ents) {
+            let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);
+            sprite.index = *digit;
+            sprite.color = color;
+        }
     }
 }
 
 fn update_time_text(
     game: Res<JoyrideGame>,
-    time_text: Res<TimeText>,
+    time_texts: Query<&TimeText>,
     mut texts: Query<&mut TextureAtlasSprite>,
 ) {
     let rem_seconds =
@@ -239,8 +240,10 @@ fn update_time_text(
     let rem_seconds: u32 = u32::clamp(rem_seconds.cast_floor(), 0, 99);
     let digits: [u32; 2] = [(rem_seconds / 10), (rem_seconds % 10)];
 
-    for (digit, ent) in digits.iter().zip(&time_text.num_ents) {
-        let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);
-        sprite.index = *digit;
+    for time_text in time_texts.iter() {
+        for (digit, ent) in digits.iter().zip(&time_text.number_ents) {
+            let mut sprite = texts.get_mut(*ent).expect(TEXT_NOT_INIT);
+            sprite.index = *digit;
+        }
     }
 }
