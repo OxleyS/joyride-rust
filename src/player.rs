@@ -7,7 +7,7 @@ use crate::{
     joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     racer::{
         get_turning_sprite_desc, make_racer, OverlayOffsets, Racer, RacerAssets, RacerOverlay,
-        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED,
+        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED, RACER_ROAD_CURVE_SCALAR,
     },
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::SpriteGridDesc,
@@ -97,7 +97,6 @@ const PLAYER_OFFROAD_DRAG: f32 = 1.8;
 
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
-const PLAYER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
 const BRAKE_LIGHT_OFFSET_Z: f32 = 0.1;
 const SAND_BLAST_OFFSET_Z: f32 = 0.2;
@@ -303,7 +302,7 @@ fn update_player_road_position(
     road_x -= racer.turn_rate * TIME_STEP;
 
     // Apply the road's curvature against the player
-    road_x += road_dyn.get_seg_curvature() * TIME_STEP * PLAYER_ROAD_CURVE_SCALAR * racer.speed;
+    road_x += road_dyn.get_seg_curvature(0.0) * TIME_STEP * RACER_ROAD_CURVE_SCALAR * racer.speed;
     road_dyn.x_offset = f32::clamp(road_x, -500.0, 500.0);
 }
 
@@ -343,7 +342,7 @@ fn update_player_bike_sprites(
         .expect(PLAYER_NOT_INIT);
 
     // The player's sprite sheet is laid out differently than other racers, missing a lot
-    if racer.get_lod_level() == 0 {
+    if racer.lod_level == 0 {
         let RacerSpriteParams {
             turn_idx: sprite_x,
             flip_x,
@@ -353,7 +352,7 @@ fn update_player_bike_sprites(
         sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = flip_x;
     } else {
-        let sprite_x = racer.get_lod_level().cast();
+        let sprite_x = racer.lod_level.cast();
         let sprite_y = 1;
         sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
         sprite.flip_x = false;
@@ -363,23 +362,22 @@ fn update_player_bike_sprites(
 fn update_brake_lights(
     player: Res<Player>,
     input: Res<JoyrideInput>,
-    mut query: Query<&mut Visible>,
+    mut query: Query<&mut RacerOverlay>,
 ) {
-    let mut visible = query
+    let mut overlay = query
         .get_mut(player.brake_light_ent)
         .expect(PLAYER_NOT_INIT);
 
-    visible.is_visible = input.brake.is_pressed();
+    overlay.is_visible = input.brake.is_pressed();
 }
 
 fn update_sand_blasts(
     player: Res<Player>,
     road_static: Res<RoadStatic>,
     road_dyn: Res<RoadDynamic>,
-    mut query: Query<(&mut Visible, &mut Timer, &mut RacerOverlay)>,
+    mut query: Query<(&mut Timer, &mut RacerOverlay)>,
 ) {
-    let (mut visible, mut timer, mut overlay) =
-        query.get_mut(player.sand_blast_ent).expect(PLAYER_NOT_INIT);
+    let (mut timer, mut overlay) = query.get_mut(player.sand_blast_ent).expect(PLAYER_NOT_INIT);
 
     let is_offroad = is_offroad(&road_static, &road_dyn);
     if is_offroad {
@@ -390,7 +388,7 @@ fn update_sand_blasts(
         }
     }
 
-    visible.is_visible = is_offroad;
+    overlay.is_visible = is_offroad;
 }
 
 fn test_modify_player(

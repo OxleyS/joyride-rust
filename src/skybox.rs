@@ -65,7 +65,7 @@ fn reposition_skybox(
     let (road_draw_height, road_curvature) = match road_dyn {
         Some(road_dyn) => (
             road_dyn.get_draw_height_pixels(),
-            road_dyn.get_seg_curvature(),
+            road_dyn.get_seg_curvature(0.0),
         ),
         None => return, // No-op if no road
     };

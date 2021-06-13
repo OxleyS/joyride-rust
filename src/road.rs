@@ -122,8 +122,10 @@ impl RoadDynamic {
         self.z_offset = (self.z_offset + advance_amount_z) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
     }
 
-    pub fn get_seg_curvature(&self) -> f32 {
-        get_bounded_seg(&self.segs, self.seg_idx).curve
+    pub fn get_seg_curvature(&self, pos_offset: f32) -> f32 {
+        let seg_idx =
+            self.seg_idx + usize::conv_floor((self.seg_pos + pos_offset) / SEGMENT_LENGTH);
+        get_bounded_seg(&self.segs, seg_idx).curve
     }
 
     pub fn get_draw_height_pixels(&self) -> usize {

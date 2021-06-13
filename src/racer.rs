@@ -45,6 +45,10 @@ pub struct RacerOverlay {
     pub offset_cycle_pos: u8,
     pub sprite_cycle_pos: u8,
 
+    // The overlay sets visibility based on LOD, so this sets whether it should
+    // be drawn in the first place
+    pub is_visible: bool,
+
     racer: Entity,
 
     offset_cycle_length: u8,
@@ -91,6 +95,7 @@ impl RacerOverlay {
             racer,
             offset_cycle_pos: 0,
             sprite_cycle_pos: 0,
+            is_visible: true,
             sprite_cycle_length,
             offset_cycle_length,
             num_lod_levels,
@@ -110,7 +115,8 @@ const RACER_BASE_Z: f32 = 300.0;
 pub const RACER_MAX_SPEED: f32 = 10.43;
 pub const MAX_TURN_RATE: f32 = 400.0;
 const NUM_RACER_LODS: usize = 4;
-const NUM_TURN_LEVELS: usize = 4;
+pub const NUM_TURN_LEVELS: usize = 4;
+pub const RACER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
 pub struct RacerAssets {
     tire_atlas: Handle<TextureAtlas>,
@@ -120,13 +126,7 @@ pub struct Racer {
     pub turn_rate: f32,
     pub speed: f32,
     pub z_bias: f32,
-    lod_level: u8,
-}
-
-impl Racer {
-    pub fn get_lod_level(&self) -> u8 {
-        self.lod_level
-    }
+    pub lod_level: u8,
 }
 
 pub fn startup_racer(
@@ -204,13 +204,24 @@ fn update_tires(
 }
 
 fn update_racer_offsets(
-    mut overlay_query: Query<(&RacerOverlay, &mut TextureAtlasSprite, &mut Transform)>,
+    mut overlay_query: Query<(
+        &RacerOverlay,
+        &mut Visible,
+        &mut TextureAtlasSprite,
+        &mut Transform,
+    )>,
     racer_query: Query<&Racer>,
 ) {
-    for (overlay, mut sprite, mut xform) in overlay_query.iter_mut() {
+    for (overlay, mut visible, mut sprite, mut xform) in overlay_query.iter_mut() {
         let (turn_rate, lod_level) = racer_query
             .get(overlay.racer)
             .map_or((0.0, 0), |r| (r.turn_rate, r.lod_level));
+
+        if lod_level >= overlay.num_lod_levels {
+            visible.is_visible = false;
+            continue;
+        }
+        visible.is_visible = overlay.is_visible;
 
         let RacerSpriteParams { turn_idx, flip_x } = get_turning_sprite_desc(turn_rate);
 
