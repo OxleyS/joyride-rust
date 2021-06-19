@@ -1,5 +1,4 @@
-use bevy::{core::FixedTimestep, input::InputSystem, prelude::*};
-use easy_cast::*;
+use bevy::{input::InputSystem, prelude::*};
 
 pub const FIELD_WIDTH: u32 = 320;
 pub const FIELD_HEIGHT: u32 = 240;
@@ -43,36 +42,13 @@ pub struct JoyrideInput {
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 enum InputStageLabels {
-    UpdateInstantInput,
-}
-
-struct JoyrideInputPressState {
-    left: bool,
-    right: bool,
-    up: bool,
-    down: bool,
-    accel: bool,
-    brake: bool,
-}
-
-impl Default for JoyrideInputPressState {
-    fn default() -> Self {
-        Self {
-            left: false,
-            right: false,
-            up: false,
-            down: false,
-            accel: false,
-            brake: false,
-        }
-    }
+    UpdateInput,
 }
 
 fn startup_joyride(mut commands: Commands) {
     commands.insert_resource(JoyrideGame {
         remaining_time: Timer::from_seconds(100.0, false),
     });
-    commands.insert_resource(JoyrideInputPressState::default());
     commands.insert_resource(JoyrideInput::default());
 
     let mut camera = OrthographicCameraBundle::new_2d();
@@ -90,58 +66,24 @@ pub fn build_app(app: &mut AppBuilder) {
     // TODO: Probably not needed now that we changed how fixed framerate works
     app.add_system_to_stage(
         CoreStage::PreUpdate,
-        update_instant_input
+        update_input
             .system()
             .after(InputSystem)
-            .label(InputStageLabels::UpdateInstantInput),
-    );
-    app.add_system_set_to_stage(
-        CoreStage::PreUpdate,
-        SystemSet::new()
-            //.with_run_criteria(FixedTimestep::step(TIME_STEP.cast()))
-            .with_system(update_fixedframe_input.system())
-            .after(InputStageLabels::UpdateInstantInput),
+            .label(InputStageLabels::UpdateInput),
     );
 }
 
-fn update_instant_input(
-    input: Res<Input<KeyCode>>,
-    mut press_state: ResMut<JoyrideInputPressState>,
-) {
-    if input.pressed(KeyCode::Left) {
-        press_state.left = true;
-    }
-    if input.pressed(KeyCode::Right) {
-        press_state.right = true;
-    }
-    if input.pressed(KeyCode::Up) {
-        press_state.up = true;
-    }
-    if input.pressed(KeyCode::Down) {
-        press_state.down = true;
-    }
-    if input.pressed(KeyCode::Z) {
-        press_state.accel = true;
-    }
-    if input.pressed(KeyCode::X) {
-        press_state.brake = true;
-    }
+fn update_input(input: Res<Input<KeyCode>>, mut input_state: ResMut<JoyrideInput>) {
+    update_input_state(&mut input_state.left, input.pressed(KeyCode::Left));
+    update_input_state(&mut input_state.right, input.pressed(KeyCode::Right));
+    update_input_state(&mut input_state.up, input.pressed(KeyCode::Up));
+    update_input_state(&mut input_state.down, input.pressed(KeyCode::Down));
+    update_input_state(&mut input_state.accel, input.pressed(KeyCode::Z));
+    update_input_state(&mut input_state.brake, input.pressed(KeyCode::X));
 }
 
-fn update_fixedframe_input(
-    mut press_state: ResMut<JoyrideInputPressState>,
-    mut input_state: ResMut<JoyrideInput>,
-) {
-    update_input_state(&mut input_state.left, &mut press_state.left);
-    update_input_state(&mut input_state.right, &mut press_state.right);
-    update_input_state(&mut input_state.up, &mut press_state.up);
-    update_input_state(&mut input_state.down, &mut press_state.down);
-    update_input_state(&mut input_state.accel, &mut press_state.accel);
-    update_input_state(&mut input_state.brake, &mut press_state.brake);
-}
-
-fn update_input_state(input_state: &mut JoyrideInputState, press_state: &mut bool) {
-    let new_state = if *press_state {
+fn update_input_state(input_state: &mut JoyrideInputState, press_state: bool) {
+    let new_state = if press_state {
         match input_state {
             JoyrideInputState::Released | JoyrideInputState::JustReleased => {
                 JoyrideInputState::JustPressed
@@ -160,5 +102,4 @@ fn update_input_state(input_state: &mut JoyrideInputState, press_state: &mut boo
     };
 
     *input_state = new_state;
-    *press_state = false;
 }

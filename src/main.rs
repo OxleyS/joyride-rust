@@ -1,7 +1,7 @@
-use bevy::core::FixedTimestep;
 use bevy::prelude::*;
 use bevy::render::RenderSystem;
 use easy_cast::*;
+use fixed_framerate::FixedFramerate;
 use player::add_player_update_systems;
 use racer::add_racer_update_systems;
 use rival::add_rival_update_systems;
@@ -32,7 +32,7 @@ fn main() {
     let mut app_builder = App::build();
 
     // TODO: Refactor all this stuff to work like in joyride.rs
-    let mut ingame_update_set = SystemSet::new(); //.with_run_criteria(FixedTimestep::step(joyride::TIME_STEP.cast()));
+    let mut ingame_update_set = SystemSet::new();
     ingame_update_set = add_road_update_systems(ingame_update_set);
     ingame_update_set = add_skybox_update_systems(ingame_update_set);
     ingame_update_set = add_player_update_systems(ingame_update_set);
@@ -82,7 +82,18 @@ fn main() {
     app_builder.add_plugin(bevy_webgl2::WebGL2Plugin);
 
     app_builder.app.schedule.set_run_criteria(
-        fixed_framerate::create_fixed_framerate_run_criteria(TIME_STEP.cast()).system(),
+        fixed_framerate::create_fixed_framerate_run_criteria(FixedFramerate {
+            fixed_step: TIME_STEP.cast(),
+
+            // We don't need to bother trying to catch up if we fall behind
+            drop_time_after_max_runs: true,
+
+            // If we don't cap at one run for the top-level scheduler, event readers that are
+            // part of the app runner will sometimes fail to receive events (notably,
+            // the AppExit event reader of the Winit runner)
+            max_runs_per_step: Some(1),
+        })
+        .system(),
     );
 
     app_builder.run();

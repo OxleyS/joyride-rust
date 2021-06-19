@@ -11,6 +11,9 @@
 				"--features",
 				"dev"
 			],
+			// "env": {
+			// 	"RUSTFLAGS": "-g",
+			// },
 			"group": "build",
 			"label": "rust: cargo build dev"
 		},
