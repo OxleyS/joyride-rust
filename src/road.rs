@@ -187,17 +187,17 @@ pub fn get_draw_params_on_road(
     if y_map_idx > road_dyn.draw_height {
         return None;
     }
-
-    let converged_x_offset =
-        (road_dyn.x_offset + x_pos) * (1.0 - (f32::conv(map_idx) / f32::conv(ROAD_DISTANCE)));
+    let x_offset = converge_x(x_pos, map_idx);
 
     Some(DrawParams {
         scale,
-        draw_pos: (
-            (road_dyn.x_map[map_idx] + converged_x_offset),
-            f32::conv(y_map_idx),
-        ),
+        draw_pos: ((road_dyn.x_map[map_idx] + x_offset), f32::conv(y_map_idx)),
     })
+}
+
+fn converge_x(x_pos: f32, road_map_idx: usize) -> f32 {
+    let converge_scalar = f32::conv(road_map_idx) / f32::conv(ROAD_DISTANCE);
+    x_pos * (1.0 - converge_scalar)
 }
 
 struct RoadDrawing {
@@ -395,6 +395,12 @@ fn update_road_curvature(road_static: Res<RoadStatic>, mut road_dyn: ResMut<Road
         road_dyn.seg_pos,
         &mut road_dyn.x_map,
     );
+
+    // Assuming no curvature, focus the far end of the road to the center of the screen.
+    // This ensures the player is "looking down the road" at all times.
+    for (i, x) in road_dyn.x_map.iter_mut().enumerate() {
+        *x += converge_x(road_dyn.x_offset, i);
+    }
 }
 
 struct HillScratchPad {
@@ -472,11 +478,6 @@ fn render_road(
         let road_z = road_static.z_map[map_idx];
         let road_scale = road_static.scale_map[map_idx];
 
-        // Assuming no curvature, focus the far end of the road to the center of the screen.
-        // This ensures the player is "looking down the road" at all times.
-        // TODO: Bake this into the x_map
-        let x_offset = road_dyn.x_offset * (1.0 - (f32::conv(map_idx) / f32::conv(ROAD_DISTANCE)));
-
         let is_seg_boundary = if DEBUG_VIS_SEGMENTS && map_idx > 0 {
             let seg_num = usize::conv_trunc((road_z + road_dyn.seg_pos) / SEGMENT_LENGTH);
             let last_seg_num = usize::conv_trunc(
@@ -492,7 +493,7 @@ fn render_road(
             i32::conv_trunc((road_z + road_dyn.z_offset) / COLOR_SWITCH_Z_INTERVAL);
         let shift_color = num_color_switches % 2 != 0;
 
-        let road_center = road_dyn.x_map[map_idx] + x_offset;
+        let road_center = road_dyn.x_map[map_idx];
         let road_width = PAVEMENT_WIDTH * road_scale;
         let center_line_width = CENTER_LINE_WIDTH * road_scale;
         let rumble_width = RUMBLE_STRIP_WIDTH * road_scale;
