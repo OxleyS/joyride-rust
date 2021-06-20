@@ -80,8 +80,6 @@ const PLAYER_MIN_SPEED: f32 = 1.4;
 pub const PLAYER_MAX_NORMAL_SPEED: f32 = 9.0;
 const PLAYER_MAX_TURBO_SPEED: f32 = RACER_MAX_SPEED;
 
-// TODO: Instead scale acceleration by how close we are to max speed.
-// Makes stopping less punishing while forcing a commitment to unlock turbo
 const PLAYER_SPEED_MIN_ACCEL: f32 = 0.4;
 const PLAYER_SPEED_MAX_ACCEL: f32 = 3.0;
 

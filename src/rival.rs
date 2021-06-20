@@ -9,7 +9,7 @@ use crate::{
         RACER_ROAD_CURVE_SCALAR,
     },
     road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
-    util::SpriteGridDesc,
+    util::{LocalVisible, SpriteGridDesc},
 };
 
 enum RivalPalette {
@@ -74,7 +74,7 @@ fn update_rival(
             &mut Rival,
             &mut Racer,
             &mut TextureAtlasSprite,
-            &mut Visible,
+            &mut LocalVisible,
             &mut Transform,
         )>,
         Query<&Racer>,
@@ -119,7 +119,6 @@ fn update_rival(
 
             visible.is_visible = true;
         } else {
-            // TODO: Will not hide children!
             visible.is_visible = false;
         }
     }

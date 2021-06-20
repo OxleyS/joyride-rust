@@ -218,7 +218,6 @@ fn update_tires(
     }
 }
 
-// TODO: This needs to run after the player and all rivals have updated, or we get off-by-one-frames
 fn update_racer_overlays(
     mut overlay_query: Query<(
         &RacerOverlay,
