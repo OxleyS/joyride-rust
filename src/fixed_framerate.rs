@@ -42,8 +42,9 @@ pub fn create_fixed_framerate_run_criteria(
             false
         };
 
-        if state.accum_seconds < state.framerate.fixed_step || hit_run_cap {
-            if hit_run_cap && state.framerate.drop_time_after_max_runs {
+        let step_accumulated = state.accum_seconds >= state.framerate.fixed_step;
+        if !step_accumulated || hit_run_cap {
+            if step_accumulated && state.framerate.drop_time_after_max_runs {
                 state.accum_seconds = 0.0;
             }
             state.num_updates = 0;
