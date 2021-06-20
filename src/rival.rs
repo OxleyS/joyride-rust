@@ -4,10 +4,7 @@ use easy_cast::*;
 use crate::{
     joyride::TIME_STEP,
     player::Player,
-    racer::{
-        get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS,
-        RACER_ROAD_CURVE_SCALAR,
-    },
+    racer::{get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS},
     road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
     util::{LocalVisible, SpriteGridDesc},
 };
@@ -105,9 +102,8 @@ fn update_rival(
                 .cast();
             racer.lod_level = lod_level;
 
-            // TODO: Share with player x_offset adjust
-            racer.turn_rate =
-                road_dyn.get_seg_curvature(rival.z_pos) * RACER_ROAD_CURVE_SCALAR * racer.speed;
+            // TODO: Lerp here for smooth turning
+            racer.turn_rate = road_dyn.get_road_x_pull(rival.z_pos, racer.speed);
 
             let sprite_params = get_turning_sprite_desc(racer.turn_rate);
             let sprite_x = match rival.palette {

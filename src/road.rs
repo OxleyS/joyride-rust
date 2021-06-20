@@ -54,6 +54,9 @@ const COLOR_SWITCH_Z_INTERVAL: f32 = 0.5;
 // The length (in Z) of a single road segment
 const SEGMENT_LENGTH: f32 = 15.0;
 
+// The strength at which road curvature modifies the X positions of objects
+const ROAD_CURVE_PULL_SCALAR: f32 = 60.0;
+
 const PAVEMENT_WIDTH: f32 = 125.0;
 const CENTER_LINE_WIDTH: f32 = 2.0;
 const RUMBLE_STRIP_WIDTH: f32 = 20.0;
@@ -141,6 +144,10 @@ impl RoadDynamic {
         let seg_idx =
             self.seg_idx + usize::conv_floor((self.seg_pos + pos_offset) / SEGMENT_LENGTH);
         get_bounded_seg(&self.segs, seg_idx).curve
+    }
+
+    pub fn get_road_x_pull(&self, z_offset: f32, speed: f32) -> f32 {
+        self.get_seg_curvature(z_offset) * speed * ROAD_CURVE_PULL_SCALAR
     }
 
     pub fn get_draw_height_pixels(&self) -> usize {

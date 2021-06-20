@@ -119,7 +119,6 @@ pub const RACER_MAX_SPEED: f32 = 10.43;
 pub const MAX_TURN_RATE: f32 = 400.0;
 const NUM_RACER_LODS: usize = 4;
 pub const NUM_TURN_LEVELS: usize = 4;
-pub const RACER_ROAD_CURVE_SCALAR: f32 = 60.0;
 
 pub struct RacerAssets {
     tire_atlas: Handle<TextureAtlas>,

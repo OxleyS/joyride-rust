@@ -7,7 +7,7 @@ use crate::{
     joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     racer::{
         get_turning_sprite_desc, make_racer, OverlayOffsets, Racer, RacerAssets, RacerOverlay,
-        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED, RACER_ROAD_CURVE_SCALAR,
+        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED,
     },
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::{LocalVisible, SpriteGridDesc},
@@ -277,7 +277,7 @@ fn update_player_road_position(
     road_x -= racer.turn_rate * TIME_STEP;
 
     // Apply the road's curvature against the player
-    road_x += road_dyn.get_seg_curvature(0.0) * TIME_STEP * RACER_ROAD_CURVE_SCALAR * racer.speed;
+    road_x += road_dyn.get_road_x_pull(0.0, racer.speed) * TIME_STEP;
     road_dyn.x_offset = f32::clamp(road_x, -500.0, 500.0);
 }
 

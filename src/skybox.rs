@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
+    joyride::TIME_STEP,
     player::Player,
     racer::Racer,
     road::{RoadDynamic, ROAD_DISTANCE},
@@ -10,9 +11,6 @@ use crate::{
 
 // Used for layering with other sprites
 const SKYBOX_SPRITE_Z: f32 = 0.0;
-
-// How quickly the skybox scrolls left/right in response to road curvature
-const SKYBOX_HORIZONTAL_SCROLL_SCALAR: f32 = 1.5;
 
 // How quickly the skybox scrolls downward when the road goes uphill
 const SKYBOX_UPHILL_SCROLL_SCALAR: f32 = 0.5;
@@ -61,13 +59,11 @@ fn reposition_skybox(
     player: Option<Res<Player>>,
     road_dyn: Option<Res<RoadDynamic>>,
 ) {
-    let (road_draw_height, road_curvature) = match road_dyn {
-        Some(road_dyn) => (
-            road_dyn.get_draw_height_pixels(),
-            road_dyn.get_seg_curvature(0.0),
-        ),
+    let road_dyn = match road_dyn {
+        Some(road_dyn) => road_dyn,
         None => return, // No-op if no road
     };
+    let road_draw_height = road_dyn.get_draw_height_pixels();
 
     for mut xform in skyboxes.iter_mut() {
         // Hide skybox over horizon if going uphill
@@ -83,7 +79,7 @@ fn reposition_skybox(
                 .as_ref()
                 .and_then(|p| racers.get(p.get_racer_ent()).ok())
                 .map_or(0.0, |r| r.speed);
-            -road_curvature * player_speed * SKYBOX_HORIZONTAL_SCROLL_SCALAR
+            -road_dyn.get_road_x_pull(0.0, player_speed) * TIME_STEP
         };
 
         xform.translation.x =
