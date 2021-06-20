@@ -315,10 +315,7 @@ fn build_road_dynamic() -> RoadDynamic {
 
 fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>) {
     let curve_amt = joyride::TIME_STEP * 0.25;
-    //let hill_amt = joyride::TIME_STEP * 0.0025;
     let hill_amt = joyride::TIME_STEP * 0.01;
-    let offset_amt = joyride::TIME_STEP * 60.0;
-    let pos_amt = joyride::TIME_STEP * 5.0;
 
     if input.pressed(KeyCode::A) {
         road_dyn.segs[0].curve -= curve_amt;
@@ -341,18 +338,6 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
     if input.pressed(KeyCode::K) {
         road_dyn.segs[0].hill += hill_amt;
         road_dyn.segs[1].hill += hill_amt;
-    }
-    if input.pressed(KeyCode::W) {
-        road_dyn.seg_pos = f32::min(SEGMENT_LENGTH, road_dyn.seg_pos + pos_amt);
-    }
-    if input.pressed(KeyCode::S) {
-        road_dyn.seg_pos = f32::max(0.0, road_dyn.seg_pos - pos_amt);
-    }
-    if input.pressed(KeyCode::Left) {
-        road_dyn.x_offset += offset_amt;
-    }
-    if input.pressed(KeyCode::Right) {
-        road_dyn.x_offset -= offset_amt;
     }
 }
 
