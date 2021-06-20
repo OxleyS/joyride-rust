@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{ecs::system::BoxedSystem, prelude::*};
 use easy_cast::*;
 
 use crate::{
@@ -18,6 +18,22 @@ struct SpeedText {
 
 struct TimeText {
     number_ents: [Entity; 2],
+}
+
+pub struct Systems {
+    pub startup_text: BoxedSystem<(), ()>,
+    pub update_texts: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_text: Box::new(startup_text.system()),
+            update_texts: SystemSet::new()
+                .with_system(update_speed_text.system())
+                .with_system(update_time_text.system()),
+        }
+    }
 }
 
 const MAX_NORMAL_DISPLAY_SPEED: u32 = 280;
@@ -45,7 +61,7 @@ const SMALL_TEXT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const TEXT_NOT_INIT: &str = "Text not initialized";
 
-pub fn startup_text(
+fn startup_text(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
@@ -174,12 +190,6 @@ pub fn startup_text(
         })
         .push_children(&[time_text_ent])
         .push_children(&time_num_ents);
-}
-
-pub fn add_text_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set
-        .with_system(update_speed_text.system())
-        .with_system(update_time_text.system())
 }
 
 fn update_speed_text(

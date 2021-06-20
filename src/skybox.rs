@@ -1,10 +1,10 @@
-use bevy::prelude::*;
+use bevy::{ecs::system::BoxedSystem, prelude::*};
 use easy_cast::*;
 
 use crate::{
     player::Player,
     racer::Racer,
-    road::{RoadDynamic, RoadStageLabels, ROAD_DISTANCE},
+    road::{RoadDynamic, ROAD_DISTANCE},
     util::spawn_empty_parent,
 };
 
@@ -21,7 +21,21 @@ const SKYBOX_SIZE: (f32, f32) = (640.0, 240.0);
 
 struct Skybox {}
 
-pub fn startup_skybox(
+pub struct Systems {
+    pub startup_skybox: BoxedSystem<(), ()>,
+    pub update_skybox: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_skybox: Box::new(startup_skybox.system()),
+            update_skybox: SystemSet::new().with_system(reposition_skybox.system()),
+        }
+    }
+}
+
+fn startup_skybox(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
@@ -39,14 +53,6 @@ pub fn startup_skybox(
                 });
             }
         });
-}
-
-pub fn add_skybox_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set.with_system(
-        reposition_skybox
-            .system()
-            .after(RoadStageLabels::UpdateRoadTables),
-    )
 }
 
 fn reposition_skybox(

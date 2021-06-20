@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{ecs::system::BoxedSystem, prelude::*};
 use easy_cast::*;
 
 use crate::{
@@ -12,12 +12,6 @@ use crate::{
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::{LocalVisible, SpriteGridDesc},
 };
-
-#[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub enum PlayerStageLabels {
-    UpdatePlayerDriving,
-    UpdatePlayerRoadPosition,
-}
 
 #[derive(Clone, Copy)]
 struct PlayerFrameTurn {
@@ -119,7 +113,32 @@ const SAND_BLAST_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const PLAYER_NOT_INIT: &str = "Player was not initialized";
 
-pub fn startup_player(
+pub struct Systems {
+    pub startup_player: BoxedSystem<(), ()>,
+    pub update_player_driving: SystemSet,
+    pub update_player_road_position: SystemSet,
+    pub update_player_visuals: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_player: Box::new(startup_player.system()),
+            update_player_driving: SystemSet::new()
+                .with_system(update_player_turning.system())
+                .with_system(update_player_speed.system()),
+            update_player_road_position: SystemSet::new()
+                .with_system(update_player_road_position.system()),
+            update_player_visuals: SystemSet::new()
+                .with_system(update_player_shake.system())
+                .with_system(update_player_bike_sprites.system())
+                .with_system(update_brake_lights.system())
+                .with_system(update_sand_blasts.system()),
+        }
+    }
+}
+
+fn startup_player(
     mut commands: Commands,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     racer_assets: Res<RacerAssets>,
@@ -176,51 +195,6 @@ pub fn startup_player(
         brake_light_ent,
         sand_blast_ent,
     })
-}
-
-pub fn add_player_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set
-        // .with_system(
-        //     test_modify_player
-        //         .system()
-        //         .label(PlayerStageLabels::UpdatePlayerState),
-        // )
-        .with_system(
-            update_player_turning
-                .system()
-                .label(PlayerStageLabels::UpdatePlayerDriving),
-        )
-        .with_system(
-            update_player_speed
-                .system()
-                .label(PlayerStageLabels::UpdatePlayerDriving),
-        )
-        .with_system(
-            update_player_road_position
-                .system()
-                .label(PlayerStageLabels::UpdatePlayerRoadPosition)
-                .after(PlayerStageLabels::UpdatePlayerDriving),
-        )
-        .with_system(
-            update_player_shake
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
-        )
-        .with_system(
-            update_player_bike_sprites
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
-        )
-        .with_system(
-            update_brake_lights
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
-        )
-        .with_system(
-            update_sand_blasts
-                .system()
-                .after(PlayerStageLabels::UpdatePlayerRoadPosition),
-        )
 }
 
 fn update_player_turning(

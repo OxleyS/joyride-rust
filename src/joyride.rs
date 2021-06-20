@@ -1,4 +1,4 @@
-use bevy::{input::InputSystem, prelude::*};
+use bevy::{ecs::system::BoxedSystem, prelude::*};
 
 pub const FIELD_WIDTH: u32 = 320;
 pub const FIELD_HEIGHT: u32 = 240;
@@ -40,9 +40,18 @@ pub struct JoyrideInput {
     pub brake: JoyrideInputState,
 }
 
-#[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
-enum InputStageLabels {
-    UpdateInput,
+pub struct Systems {
+    pub startup_joyride: BoxedSystem<(), ()>,
+    pub update_input: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_joyride: Box::new(startup_joyride.system()),
+            update_input: SystemSet::new().with_system(update_input.system()),
+        }
+    }
 }
 
 fn startup_joyride(mut commands: Commands) {
@@ -58,19 +67,6 @@ fn startup_joyride(mut commands: Commands) {
     camera.orthographic_projection.right = FIELD_WIDTH as f32;
     camera.orthographic_projection.bottom = 0.0;
     commands.spawn_bundle(camera);
-}
-
-pub fn build_app(app: &mut AppBuilder) {
-    app.add_startup_system(startup_joyride.system());
-
-    // TODO: Probably not needed now that we changed how fixed framerate works
-    app.add_system_to_stage(
-        CoreStage::PreUpdate,
-        update_input
-            .system()
-            .after(InputSystem)
-            .label(InputStageLabels::UpdateInput),
-    );
 }
 
 fn update_input(input: Res<Input<KeyCode>>, mut input_state: ResMut<JoyrideInput>) {

@@ -1,14 +1,14 @@
-use bevy::prelude::*;
+use bevy::{ecs::system::BoxedSystem, prelude::*};
 use easy_cast::*;
 
 use crate::{
     joyride::TIME_STEP,
-    player::{Player, PlayerStageLabels},
+    player::Player,
     racer::{
         get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS,
         RACER_ROAD_CURVE_SCALAR,
     },
-    road::{get_draw_params_on_road, RoadDynamic, RoadStageLabels, RoadStatic},
+    road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
     util::SpriteGridDesc,
 };
 
@@ -23,6 +23,20 @@ struct Rival {
     z_pos: f32,
 }
 
+pub struct Systems {
+    pub startup_rivals: BoxedSystem<(), ()>,
+    pub update_rivals: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_rivals: Box::new(startup_rival.system()),
+            update_rivals: SystemSet::new().with_system(update_rival.system()),
+        }
+    }
+}
+
 const RIVAL_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
     rows: 6,
@@ -31,7 +45,7 @@ const RIVAL_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const LOD_SCALE_MAPPING: [f32; 5] = [0.83, 0.67, 0.59, 0.34, 0.16];
 
-pub fn startup_rival(
+fn startup_rival(
     mut commands: Commands,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     racer_assets: Res<RacerAssets>,
@@ -52,15 +66,6 @@ pub fn startup_rival(
         x_pos: 50.0,
         z_pos: 1.5,
     });
-}
-
-pub fn add_rival_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set.with_system(
-        update_rival
-            .system()
-            .after(PlayerStageLabels::UpdatePlayerRoadPosition)
-            .after(RoadStageLabels::UpdateRoadTables),
-    )
 }
 
 fn update_rival(

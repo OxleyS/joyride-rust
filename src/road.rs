@@ -1,5 +1,6 @@
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
 use crate::{boxed_array, joyride};
+use bevy::ecs::system::BoxedSystem;
 use bevy::{
     core::AsBytes,
     prelude::*,
@@ -9,9 +10,24 @@ use core::mem::size_of;
 use easy_cast::*;
 use lebe::Endian;
 
-#[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub enum RoadStageLabels {
-    UpdateRoadTables,
+pub struct Systems {
+    pub startup_road: BoxedSystem<(), ()>,
+    pub update_road: SystemSet,
+    pub draw_road: SystemSet,
+    pub test_curve_road: SystemSet,
+}
+
+impl Systems {
+    pub fn new() -> Self {
+        Self {
+            startup_road: Box::new(startup_road.system()),
+            update_road: SystemSet::new()
+                .with_system(update_road_curvature.system())
+                .with_system(update_road_hills.system()),
+            draw_road: SystemSet::new().with_system(render_road.system()),
+            test_curve_road: SystemSet::new().with_system(test_curve_road.system()),
+        }
+    }
 }
 
 // Used for layering with other sprites
@@ -198,7 +214,7 @@ impl Default for RoadDrawing {
     }
 }
 
-pub fn startup_road(
+fn startup_road(
     mut commands: Commands,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -208,25 +224,6 @@ pub fn startup_road(
 
     commands.insert_resource(road_static);
     commands.insert_resource(road_dynamic);
-}
-
-pub fn add_road_update_systems(system_set: SystemSet) -> SystemSet {
-    system_set
-        .with_system(
-            update_road_curvature
-                .system()
-                .label(RoadStageLabels::UpdateRoadTables),
-        )
-        .with_system(
-            update_road_hills
-                .system()
-                .label(RoadStageLabels::UpdateRoadTables),
-        )
-        .with_system(test_curve_road.system())
-}
-
-pub fn add_road_render_systems(system_set: SystemSet) -> SystemSet {
-    system_set.with_system(render_road.system())
 }
 
 fn build_road_static(
