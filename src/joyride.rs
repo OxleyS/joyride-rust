@@ -1,4 +1,4 @@
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 
 pub const FIELD_WIDTH: u32 = 320;
 pub const FIELD_HEIGHT: u32 = 240;
@@ -41,14 +41,14 @@ pub struct JoyrideInput {
 }
 
 pub struct Systems {
-    pub startup_joyride: BoxedSystem<(), ()>,
+    pub startup_joyride: SystemSet,
     pub update_input: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_joyride: Box::new(startup_joyride.system()),
+            startup_joyride: SystemSet::new().with_system(startup_joyride.system()),
             update_input: SystemSet::new().with_system(update_input.system()),
         }
     }

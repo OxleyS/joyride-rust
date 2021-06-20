@@ -1,4 +1,4 @@
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
@@ -24,14 +24,14 @@ struct Rival {
 }
 
 pub struct Systems {
-    pub startup_rivals: BoxedSystem<(), ()>,
+    pub startup_rivals: SystemSet,
     pub update_rivals: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_rivals: Box::new(startup_rival.system()),
+            startup_rivals: SystemSet::new().with_system(startup_rival.system()),
             update_rivals: SystemSet::new().with_system(update_rival.system()),
         }
     }

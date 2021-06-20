@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
@@ -21,14 +21,14 @@ struct TimeText {
 }
 
 pub struct Systems {
-    pub startup_text: BoxedSystem<(), ()>,
+    pub startup_text: SystemSet,
     pub update_texts: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_text: Box::new(startup_text.system()),
+            startup_text: SystemSet::new().with_system(startup_text.system()),
             update_texts: SystemSet::new()
                 .with_system(update_speed_text.system())
                 .with_system(update_time_text.system()),

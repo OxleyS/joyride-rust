@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
@@ -133,14 +133,14 @@ pub struct Racer {
 }
 
 pub struct Systems {
-    pub startup_racer: BoxedSystem<(), ()>,
+    pub startup_racer: SystemSet,
     pub update_racers: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_racer: Box::new(startup_racer.system()),
+            startup_racer: SystemSet::new().with_system(startup_racer.system()),
             update_racers: SystemSet::new()
                 .with_system(update_tires.system())
                 .with_system(update_racer_overlays.system())

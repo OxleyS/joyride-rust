@@ -1,4 +1,4 @@
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
@@ -22,14 +22,14 @@ const SKYBOX_SIZE: (f32, f32) = (640.0, 240.0);
 struct Skybox {}
 
 pub struct Systems {
-    pub startup_skybox: BoxedSystem<(), ()>,
+    pub startup_skybox: SystemSet,
     pub update_skybox: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_skybox: Box::new(startup_skybox.system()),
+            startup_skybox: SystemSet::new().with_system(startup_skybox.system()),
             update_skybox: SystemSet::new().with_system(reposition_skybox.system()),
         }
     }

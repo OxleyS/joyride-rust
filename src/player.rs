@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::{ecs::system::BoxedSystem, prelude::*};
+use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
@@ -114,7 +114,7 @@ const SAND_BLAST_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 const PLAYER_NOT_INIT: &str = "Player was not initialized";
 
 pub struct Systems {
-    pub startup_player: BoxedSystem<(), ()>,
+    pub startup_player: SystemSet,
     pub update_player_driving: SystemSet,
     pub update_player_road_position: SystemSet,
     pub update_player_visuals: SystemSet,
@@ -123,7 +123,7 @@ pub struct Systems {
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_player: Box::new(startup_player.system()),
+            startup_player: SystemSet::new().with_system(startup_player.system()),
             update_player_driving: SystemSet::new()
                 .with_system(update_player_turning.system())
                 .with_system(update_player_speed.system()),

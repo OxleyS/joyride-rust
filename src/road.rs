@@ -1,6 +1,5 @@
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
 use crate::{boxed_array, joyride};
-use bevy::ecs::system::BoxedSystem;
 use bevy::{
     core::AsBytes,
     prelude::*,
@@ -11,7 +10,7 @@ use easy_cast::*;
 use lebe::Endian;
 
 pub struct Systems {
-    pub startup_road: BoxedSystem<(), ()>,
+    pub startup_road: SystemSet,
     pub update_road: SystemSet,
     pub draw_road: SystemSet,
     pub test_curve_road: SystemSet,
@@ -20,7 +19,7 @@ pub struct Systems {
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_road: Box::new(startup_road.system()),
+            startup_road: SystemSet::new().with_system(startup_road.system()),
             update_road: SystemSet::new()
                 .with_system(update_road_curvature.system())
                 .with_system(update_road_hills.system()),
