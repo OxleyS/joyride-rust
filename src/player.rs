@@ -33,6 +33,7 @@ pub struct Player {
 
     brake_light_ent: Entity,
     sand_blast_ent: Entity,
+    turbo_flare_ent: Entity,
 }
 
 impl Player {
@@ -76,12 +77,28 @@ fn make_sand_blast_overlay(racer: Entity) -> RacerOverlay {
     )
 }
 
+const TURBO_FLARE_OFFSETS: [OverlayOffsets; 1] =
+    [OverlayOffsets([(0, -6), (2, -7), (2, -9), (-1, -10)])];
+fn make_turbo_flare_overlay(racer: Entity) -> RacerOverlay {
+    RacerOverlay::new(
+        racer,
+        1,
+        1,
+        1,
+        true,
+        true,
+        &TURBO_FLARE_SPRITE_DESC,
+        &TURBO_FLARE_OFFSETS,
+    )
+}
+
 const PLAYER_MIN_SPEED: f32 = 1.4;
 pub const PLAYER_MAX_NORMAL_SPEED: f32 = 9.0;
 const PLAYER_MAX_TURBO_SPEED: f32 = RACER_MAX_SPEED;
 
 const PLAYER_SPEED_MIN_ACCEL: f32 = 0.4;
 const PLAYER_SPEED_MAX_ACCEL: f32 = 3.0;
+const PLAYER_SPEED_TURBO_ACCEL: f32 = 0.75;
 
 const PLAYER_COAST_DRAG: f32 = 0.75;
 const PLAYER_BRAKE_DRAG: f32 = 3.6;
@@ -91,6 +108,7 @@ const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 
 const BRAKE_LIGHT_OFFSET_Z: f32 = 0.1;
+const TURBO_FLARE_OFFSET_Z: f32 = 0.15;
 const SAND_BLAST_OFFSET_Z: f32 = 0.2;
 
 const PLAYER_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
@@ -107,6 +125,11 @@ const SAND_BLAST_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 32,
     rows: 1,
     columns: 2,
+};
+const TURBO_FLARE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
+    tile_size: 32,
+    rows: 1,
+    columns: 4,
 };
 
 const PLAYER_NOT_INIT: &str = "Player was not initialized";
@@ -131,7 +154,8 @@ impl Systems {
                 .with_system(update_player_shake.system())
                 .with_system(update_player_bike_sprites.system())
                 .with_system(update_brake_lights.system())
-                .with_system(update_sand_blasts.system()),
+                .with_system(update_sand_blasts.system())
+                .with_system(update_turbo_flare.system()),
         }
     }
 }
@@ -148,6 +172,8 @@ fn startup_player(
     let brake_light_atlas = BRAKE_LIGHT_SPRITE_DESC.make_atlas(brake_light_tex);
     let sand_blast_tex = asset_server.load("textures/sand_blast_atlas.png");
     let sand_blast_atlas = SAND_BLAST_SPRITE_DESC.make_atlas(sand_blast_tex);
+    let turbo_flare_tex = asset_server.load("textures/turbo_flare_atlas.png");
+    let turbo_flare_atlas = TURBO_FLARE_SPRITE_DESC.make_atlas(turbo_flare_tex);
 
     let racer_ent = make_racer(
         &mut commands,
@@ -178,9 +204,20 @@ fn startup_player(
         .insert(LocalVisible::default())
         .id();
 
+    let turbo_flare_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: texture_atlases.add(turbo_flare_atlas),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, TURBO_FLARE_OFFSET_Z)),
+            ..Default::default()
+        })
+        .insert(Timer::from_seconds(TIME_STEP, true))
+        .insert(make_turbo_flare_overlay(racer_ent))
+        .insert(LocalVisible::default())
+        .id();
+
     commands
         .entity(racer_ent)
-        .push_children(&[brake_light_ent, sand_blast_ent]);
+        .push_children(&[brake_light_ent, sand_blast_ent, turbo_flare_ent]);
 
     commands.insert_resource(Player {
         turn_buffer: [PlayerFrameTurn {
@@ -192,6 +229,7 @@ fn startup_player(
         racer_ent,
         brake_light_ent,
         sand_blast_ent,
+        turbo_flare_ent,
     })
 }
 
@@ -240,14 +278,22 @@ fn update_player_speed(
 
     let is_braking = input.brake.is_pressed();
     let is_accelerating = input.accel.is_pressed();
+    let is_turboing = input.turbo.is_pressed() && racer.speed >= PLAYER_MAX_NORMAL_SPEED;
 
     if is_braking {
         speed_change -= PLAYER_BRAKE_DRAG;
+    } else if is_turboing {
+        speed_change += PLAYER_SPEED_TURBO_ACCEL;
+    } else if racer.speed > PLAYER_MAX_NORMAL_SPEED {
+        let to_normal_cap = (racer.speed - PLAYER_MAX_NORMAL_SPEED) / TIME_STEP;
+        speed_change -= f32::min(PLAYER_COAST_DRAG * 2.0, to_normal_cap);
     } else if is_accelerating {
         let accel_scale = f32::max(1.0 - (racer.speed / PLAYER_MAX_NORMAL_SPEED), 0.0);
         let accel = PLAYER_SPEED_MIN_ACCEL
             + ((PLAYER_SPEED_MAX_ACCEL - PLAYER_SPEED_MIN_ACCEL) * accel_scale);
-        speed_change += accel;
+
+        let accel_cap = f32::max((PLAYER_MAX_NORMAL_SPEED - racer.speed) / TIME_STEP, 0.0);
+        speed_change += f32::min(accel, accel_cap);
     } else {
         speed_change -= PLAYER_COAST_DRAG;
     }
@@ -261,7 +307,7 @@ fn update_player_speed(
         // TODO: Applying delta time here may be a problem for boost end clamping
         racer.speed + (speed_change * TIME_STEP),
         PLAYER_MIN_SPEED,
-        PLAYER_MAX_NORMAL_SPEED,
+        PLAYER_MAX_TURBO_SPEED,
     );
 }
 
@@ -364,6 +410,35 @@ fn update_sand_blasts(
     }
 
     overlay.is_visible = is_offroad;
+}
+
+fn update_turbo_flare(
+    player: Res<Player>,
+    input: Res<JoyrideInput>,
+    road_static: Res<RoadStatic>,
+    road_dyn: Res<RoadDynamic>,
+    mut overlay_query: Query<(&mut Timer, &mut RacerOverlay)>,
+    racer_query: Query<&Racer>,
+) {
+    let (mut timer, mut overlay) = overlay_query
+        .get_mut(player.turbo_flare_ent)
+        .expect(PLAYER_NOT_INIT);
+    let racer = racer_query.get(player.racer_ent).expect(PLAYER_NOT_INIT);
+
+    if is_offroad(&road_static, &road_dyn)
+        || !input.turbo.is_pressed()
+        || racer.speed <= PLAYER_MAX_NORMAL_SPEED
+    {
+        overlay.is_visible = false;
+        return;
+    }
+
+    timer.tick(Duration::from_secs_f32(TIME_STEP));
+    if timer.just_finished() {
+        overlay.is_visible = !overlay.is_visible;
+        overlay.sprite_cycle_pos =
+            (overlay.sprite_cycle_pos + 1) % overlay.get_sprite_cycle_length()
+    }
 }
 
 fn test_modify_player(

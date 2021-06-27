@@ -38,6 +38,7 @@ pub struct JoyrideInput {
     pub down: JoyrideInputState,
     pub accel: JoyrideInputState,
     pub brake: JoyrideInputState,
+    pub turbo: JoyrideInputState,
 }
 
 pub struct Systems {
@@ -76,6 +77,7 @@ fn update_input(input: Res<Input<KeyCode>>, mut input_state: ResMut<JoyrideInput
     update_input_state(&mut input_state.down, input.pressed(KeyCode::Down));
     update_input_state(&mut input_state.accel, input.pressed(KeyCode::Z));
     update_input_state(&mut input_state.brake, input.pressed(KeyCode::X));
+    update_input_state(&mut input_state.turbo, input.pressed(KeyCode::C));
 }
 
 fn update_input_state(input_state: &mut JoyrideInputState, press_state: bool) {
