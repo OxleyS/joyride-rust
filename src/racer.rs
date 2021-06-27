@@ -31,11 +31,11 @@ const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     OverlayOffsets([(1, -23), (1, -23), (-4, -24), (-7, -24)]),
     OverlayOffsets([(1, -24), (0, -25), (-5, -26), (-9, -26)]),
 ];
-fn make_tire_overlay(racer: Entity) -> RacerOverlay {
-    RacerOverlay::new(racer, 2, 1, 4, true, true, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
+fn make_tire_overlay() -> RacerOverlay {
+    RacerOverlay::new(2, 1, 4, true, true, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
 }
 
-struct Tire {}
+pub struct Tire {}
 
 const TIRE_Z_OFFSET: f32 = 0.1;
 const TIRE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
@@ -52,8 +52,6 @@ pub struct RacerOverlay {
     // be drawn in the first place
     pub is_visible: bool,
 
-    racer: Entity,
-
     offset_cycle_length: u8,
     sprite_cycle_length: u8,
     num_lod_levels: u8,
@@ -67,7 +65,6 @@ pub struct RacerOverlay {
 
 impl RacerOverlay {
     pub fn new(
-        racer: Entity,
         offset_cycle_length: u8,
         sprite_cycle_length: u8,
         num_lod_levels: u8,
@@ -95,7 +92,6 @@ impl RacerOverlay {
             "Sprite grid not tall enough for all LOD levels"
         );
         Self {
-            racer,
             offset_cycle_pos: 0,
             sprite_cycle_pos: 0,
             is_visible: true,
@@ -129,6 +125,7 @@ pub struct Racer {
     pub speed: f32,
     pub z_bias: f32,
     pub lod_level: u8,
+    pub tire_ent: Entity,
 }
 
 pub struct Systems {
@@ -167,6 +164,19 @@ pub fn make_racer(
     bike_atlas: Handle<TextureAtlas>,
     z_bias: f32,
 ) -> Entity {
+    let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_Z_OFFSET));
+    let tire_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: racer_assets.tire_atlas.clone(),
+            transform: tire_xform,
+            ..Default::default()
+        })
+        .insert(LocalVisible::default())
+        .insert(Timer::from_seconds(0.1, false))
+        .insert(make_tire_overlay())
+        .insert(Tire {})
+        .id();
+
     let racer_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: bike_atlas.clone(),
@@ -177,34 +187,21 @@ pub fn make_racer(
             turn_rate: 0.0,
             speed: 0.0,
             z_bias,
+            tire_ent,
         })
         .insert(LocalVisible::default())
+        .push_children(&[tire_ent])
         .id();
 
-    let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_Z_OFFSET));
-
-    let tire_ent = commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: racer_assets.tire_atlas.clone(),
-            transform: tire_xform,
-            ..Default::default()
-        })
-        .insert(LocalVisible::default())
-        .insert(Timer::from_seconds(0.1, false))
-        .insert(make_tire_overlay(racer_ent))
-        .insert(Tire {})
-        .id();
-
-    commands.entity(racer_ent).push_children(&[tire_ent]);
     racer_ent
 }
 
 fn update_tires(
-    mut overlay_query: Query<(&mut RacerOverlay, &mut Timer), With<Tire>>,
+    mut overlay_query: Query<(&mut RacerOverlay, &mut Timer, &Parent), With<Tire>>,
     racer_query: Query<&Racer>,
 ) {
-    for (mut overlay, mut timer) in overlay_query.iter_mut() {
-        let speed = racer_query.get(overlay.racer).map_or(0.0, |r| r.speed);
+    for (mut overlay, mut timer, parent) in overlay_query.iter_mut() {
+        let speed = racer_query.get(parent.0).map_or(0.0, |r| r.speed);
 
         timer.tick(Duration::from_secs_f32(TIME_STEP));
         if timer.finished() {
@@ -223,12 +220,13 @@ fn update_racer_overlays(
         &mut LocalVisible,
         &mut TextureAtlasSprite,
         &mut Transform,
+        &Parent,
     )>,
     racer_query: Query<&Racer>,
 ) {
-    for (overlay, mut visible, mut sprite, mut xform) in overlay_query.iter_mut() {
+    for (overlay, mut visible, mut sprite, mut xform, parent) in overlay_query.iter_mut() {
         let (turn_rate, lod_level) = racer_query
-            .get(overlay.racer)
+            .get(parent.0)
             .map_or((0.0, 0), |r| (r.turn_rate, r.lod_level));
 
         if lod_level >= overlay.num_lod_levels {

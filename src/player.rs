@@ -7,7 +7,7 @@ use crate::{
     joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     racer::{
         get_turning_sprite_desc, make_racer, OverlayOffsets, Racer, RacerAssets, RacerOverlay,
-        RacerSpriteParams, MAX_TURN_RATE, RACER_MAX_SPEED,
+        RacerSpriteParams, Tire, MAX_TURN_RATE, RACER_MAX_SPEED,
     },
     road::{is_offroad, RoadDynamic, RoadStatic},
     util::{LocalVisible, SpriteGridDesc},
@@ -22,6 +22,31 @@ struct PlayerFrameTurn {
 struct PlayerSlide {
     direction: PlayerSlideDirection,
     timer: Timer,
+}
+
+struct PlayerCrash {
+    sprite_cycle_timer: Timer,
+    sprite_cycle_idx: u32,
+
+    resetting: bool,
+    pre_reset_timer: Timer,
+}
+
+impl PlayerCrash {
+    fn next_sprite_cycle_time(speed: f32) -> f32 {
+        if speed > 3.0 {
+            1.0 / 30.0
+        } else if speed > 1.2 {
+            2.0 / 30.0
+        } else {
+            4.0 / 30.0
+        }
+    }
+}
+
+enum PlayerControlLoss {
+    Slide(PlayerSlide),
+    Crash(PlayerCrash),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,7 +65,7 @@ pub struct Player {
     offroad_shake_index: usize,
     offroad_shake_timer: Timer,
 
-    slide: Option<PlayerSlide>,
+    control_loss: Option<PlayerControlLoss>,
 
     racer_ent: Entity,
 
@@ -59,9 +84,8 @@ impl Player {
 // No cycle or LOD to worry about, unlike tires
 const BRAKE_LIGHT_OFFSETS: [OverlayOffsets; 1] =
     [OverlayOffsets([(0, -1), (2, -2), (4, -5), (0, -8)])];
-fn make_brake_light_overlay(racer: Entity) -> RacerOverlay {
+fn make_brake_light_overlay() -> RacerOverlay {
     RacerOverlay::new(
-        racer,
         1,
         1,
         1,
@@ -78,9 +102,8 @@ const SAND_BLAST_OFFSETS: [OverlayOffsets; 1] = [OverlayOffsets([
     (-14, -16),
     (-22, -16),
 ])];
-fn make_sand_blast_overlay(racer: Entity) -> RacerOverlay {
+fn make_sand_blast_overlay() -> RacerOverlay {
     RacerOverlay::new(
-        racer,
         1,
         2,
         1,
@@ -97,24 +120,14 @@ const SMOKE_OFFSETS: [OverlayOffsets; 1] = [OverlayOffsets([
     (-14, -16),
     (-22, -16),
 ])];
-fn make_smoke_overlay(racer: Entity) -> RacerOverlay {
-    RacerOverlay::new(
-        racer,
-        1,
-        2,
-        1,
-        false,
-        false,
-        &SMOKE_SPRITE_DESC,
-        &SMOKE_OFFSETS,
-    )
+fn make_smoke_overlay() -> RacerOverlay {
+    RacerOverlay::new(1, 2, 1, false, false, &SMOKE_SPRITE_DESC, &SMOKE_OFFSETS)
 }
 
 const TURBO_FLARE_OFFSETS: [OverlayOffsets; 1] =
     [OverlayOffsets([(0, -6), (2, -7), (2, -9), (-1, -10)])];
-fn make_turbo_flare_overlay(racer: Entity) -> RacerOverlay {
+fn make_turbo_flare_overlay() -> RacerOverlay {
     RacerOverlay::new(
-        racer,
         1,
         1,
         1,
@@ -136,10 +149,12 @@ const PLAYER_SPEED_TURBO_ACCEL: f32 = 0.75;
 const PLAYER_COAST_DRAG: f32 = 0.75;
 const PLAYER_BRAKE_DRAG: f32 = 3.6;
 const PLAYER_OFFROAD_DRAG: f32 = 1.8;
+const PLAYER_CRASH_DRAG: f32 = 3.0;
 
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 
+const PLAYER_CRASH_RESET_SPEED: f32 = 300.0;
 const PLAYER_SLIDE_DURATION: f32 = 2.0 / 3.0;
 const PLAYER_SLIDE_STRENGTH: f32 = 300.0;
 
@@ -190,6 +205,7 @@ impl Systems {
             update_player_driving: SystemSet::new()
                 .with_system(update_player_turning.system())
                 .with_system(update_player_speed.system())
+                .with_system(update_player_crash.system())
                 .with_system(test_modify_player.system()),
             update_player_road_position: SystemSet::new()
                 .with_system(update_player_road_position.system()),
@@ -235,7 +251,7 @@ fn startup_player(
             transform: brake_light_xform,
             ..Default::default()
         })
-        .insert(make_brake_light_overlay(racer_ent))
+        .insert(make_brake_light_overlay())
         .insert(LocalVisible::default())
         .id();
 
@@ -246,7 +262,7 @@ fn startup_player(
             ..Default::default()
         })
         .insert(Timer::from_seconds(0.1, true))
-        .insert(make_sand_blast_overlay(racer_ent))
+        .insert(make_sand_blast_overlay())
         .insert(LocalVisible::default())
         .id();
 
@@ -257,7 +273,7 @@ fn startup_player(
             ..Default::default()
         })
         .insert(Timer::from_seconds(0.1, true))
-        .insert(make_smoke_overlay(racer_ent))
+        .insert(make_smoke_overlay())
         .insert(LocalVisible::default())
         .id();
 
@@ -268,7 +284,7 @@ fn startup_player(
             ..Default::default()
         })
         .insert(Timer::from_seconds(TIME_STEP, true))
-        .insert(make_turbo_flare_overlay(racer_ent))
+        .insert(make_turbo_flare_overlay())
         .insert(LocalVisible::default())
         .id();
 
@@ -286,7 +302,7 @@ fn startup_player(
         }; TURN_BUFFER_SIZE],
         offroad_shake_timer: Timer::from_seconds(1.0 / 15.0, true),
         offroad_shake_index: 0,
-        slide: None,
+        control_loss: None,
         racer_ent,
         brake_light_ent,
         sand_blast_ent,
@@ -327,28 +343,34 @@ fn update_player_turning(
         racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
     }
 
-    if let Some(slide) = player.slide.as_mut() {
-        racer.turn_rate = if slide.direction == PlayerSlideDirection::Left {
-            PLAYER_SLIDE_STRENGTH
-        } else {
-            -PLAYER_SLIDE_STRENGTH
-        };
+    match player.control_loss.as_mut() {
+        Some(PlayerControlLoss::Slide(slide)) => {
+            racer.turn_rate = if slide.direction == PlayerSlideDirection::Left {
+                PLAYER_SLIDE_STRENGTH
+            } else {
+                -PLAYER_SLIDE_STRENGTH
+            };
 
-        if slide
-            .timer
-            .tick(Duration::from_secs_f32(TIME_STEP))
-            .just_finished()
-        {
-            player.slide = None;
-            racer.turn_rate = 0.0;
+            if slide
+                .timer
+                .tick(Duration::from_secs_f32(TIME_STEP))
+                .just_finished()
+            {
+                player.control_loss = None;
+                racer.turn_rate = 0.0;
 
-            // Clear the turn buffer
-            for b in player.turn_buffer.as_mut() {
-                b.left = false;
-                b.right = false;
+                // Clear the turn buffer
+                for b in player.turn_buffer.as_mut() {
+                    b.left = false;
+                    b.right = false;
+                }
             }
         }
-    }
+        Some(PlayerControlLoss::Crash(_)) => {
+            racer.turn_rate = 0.0;
+        }
+        _ => {}
+    };
 }
 
 fn update_player_speed(
@@ -364,9 +386,17 @@ fn update_player_speed(
     let is_braking = input.brake.is_pressed();
     let is_accelerating = input.accel.is_pressed();
     let is_turboing = input.turbo.is_pressed() && racer.speed >= PLAYER_MAX_NORMAL_SPEED;
+    let is_crashing = match &player.control_loss {
+        Some(PlayerControlLoss::Crash(_)) => true,
+        _ => false,
+    };
 
-    if player.slide.is_some() {
-        speed_change -= PLAYER_COAST_DRAG;
+    if player.control_loss.is_some() {
+        speed_change -= if is_crashing {
+            PLAYER_CRASH_DRAG
+        } else {
+            PLAYER_COAST_DRAG
+        };
     } else if is_braking {
         speed_change -= PLAYER_BRAKE_DRAG;
     } else if is_turboing {
@@ -393,7 +423,7 @@ fn update_player_speed(
     racer.speed = f32::clamp(
         // TODO: Applying delta time here may be a problem for boost end clamping
         racer.speed + (speed_change * TIME_STEP),
-        PLAYER_MIN_SPEED,
+        if is_crashing { 0.0 } else { PLAYER_MIN_SPEED },
         PLAYER_MAX_TURBO_SPEED,
     );
 }
@@ -406,7 +436,12 @@ fn update_player_road_position(
     let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
     road_dyn.advance_z(racer.speed * TIME_STEP);
 
-    let turn_rate = if player.slide.is_some() {
+    let is_sliding = match &player.control_loss {
+        Some(PlayerControlLoss::Slide(_)) => true,
+        _ => false,
+    };
+
+    let turn_rate = if is_sliding {
         -racer.turn_rate
     } else {
         racer.turn_rate
@@ -449,26 +484,42 @@ fn update_player_shake(
 fn update_player_bike_sprites(
     player: Res<Player>,
     mut racer_query: Query<(&mut TextureAtlasSprite, &Racer)>,
+    mut tire_query: Query<(&mut RacerOverlay, With<Tire>)>,
 ) {
     let (mut sprite, racer) = racer_query
         .get_mut(player.racer_ent)
         .expect(PLAYER_NOT_INIT);
 
-    // The player's sprite sheet is laid out differently than other racers, missing a lot
-    if racer.lod_level == 0 {
-        let RacerSpriteParams {
-            turn_idx: sprite_x,
-            flip_x,
-        } = get_turning_sprite_desc(racer.turn_rate);
+    let mut tire_visible = true;
 
-        let sprite_y = 0;
-        sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
-        sprite.flip_x = flip_x;
-    } else {
-        let sprite_x = racer.lod_level.cast();
-        let sprite_y = 1;
-        sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
-        sprite.flip_x = false;
+    match player.control_loss.as_ref() {
+        Some(PlayerControlLoss::Crash(crash)) => {
+            tire_visible = false;
+            sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(crash.sprite_cycle_idx, 2);
+            sprite.flip_x = false;
+        }
+        _ => {
+            // The player's sprite sheet is laid out differently than other racers, missing a lot
+            if racer.lod_level == 0 {
+                let RacerSpriteParams {
+                    turn_idx: sprite_x,
+                    flip_x,
+                } = get_turning_sprite_desc(racer.turn_rate);
+
+                let sprite_y = 0;
+                sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+                sprite.flip_x = flip_x;
+            } else {
+                let sprite_x = racer.lod_level.cast();
+                let sprite_y = 1;
+                sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+                sprite.flip_x = false;
+            }
+        }
+    };
+
+    if let Ok((mut tire_overlay, _)) = tire_query.get_mut(racer.tire_ent) {
+        tire_overlay.is_visible = tire_visible;
     }
 }
 
@@ -514,7 +565,12 @@ fn update_smoke(
         .get_mut(player.smoke_ent)
         .expect(PLAYER_NOT_INIT);
 
-    let is_active = player.slide.is_some() && !is_offroad(&road_static, &road_dyn);
+    let is_sliding = match &player.control_loss {
+        Some(PlayerControlLoss::Slide(_)) => true,
+        _ => false,
+    };
+
+    let is_active = is_sliding && !is_offroad(&road_static, &road_dyn);
     if is_active {
         timer.tick(Duration::from_secs_f32(TIME_STEP));
         if timer.just_finished() {
@@ -555,20 +611,82 @@ fn update_turbo_flare(
     }
 }
 
+fn update_player_crash(
+    mut player: ResMut<Player>,
+    mut racer_query: Query<(&mut Racer, &mut LocalVisible)>,
+    mut road_dyn: ResMut<RoadDynamic>,
+) {
+    let player: &mut Player = &mut player;
+
+    let crash = match player.control_loss.as_mut() {
+        Some(PlayerControlLoss::Crash(crash)) => crash,
+        _ => return,
+    };
+
+    // TODO: Can we just put the player component directly on the racer ent instead?
+    let (mut racer, mut visible) = racer_query
+        .get_mut(player.racer_ent)
+        .expect(PLAYER_NOT_INIT);
+    let tick_duration = Duration::from_secs_f32(TIME_STEP);
+
+    if crash.resetting {
+        let remaining = road_dyn.x_offset / TIME_STEP;
+        if remaining <= PLAYER_CRASH_RESET_SPEED {
+            road_dyn.x_offset = 0.0;
+            player.control_loss = None;
+            racer.speed = PLAYER_MIN_SPEED;
+            visible.is_visible = true;
+            // TODO: Reset turn buffer
+        } else {
+            road_dyn.x_offset -= PLAYER_CRASH_RESET_SPEED * TIME_STEP;
+            visible.is_visible = false;
+        }
+    } else {
+        if racer.speed <= 0.0 {
+            crash.sprite_cycle_idx = 2;
+            crash.pre_reset_timer.tick(tick_duration);
+            if crash.pre_reset_timer.just_finished() {
+                crash.resetting = true;
+            }
+        } else {
+            crash.sprite_cycle_timer.tick(tick_duration);
+            if crash.sprite_cycle_timer.just_finished() {
+                crash.sprite_cycle_idx = (crash.sprite_cycle_idx + 1) % 4;
+                crash
+                    .sprite_cycle_timer
+                    .set_duration(Duration::from_secs_f32(
+                        PlayerCrash::next_sprite_cycle_time(racer.speed),
+                    ));
+                crash.sprite_cycle_timer.reset();
+            }
+        }
+    }
+}
+
 fn test_modify_player(
     input: Res<JoyrideInput>,
     mut player: ResMut<Player>,
-    //mut racer_query: Query<&mut Racer>,
+    mut racer_query: Query<&mut Racer>,
 ) {
+    let mut racer = racer_query
+        .get_mut(player.racer_ent)
+        .expect(PLAYER_NOT_INIT);
+
     if input.debug == JoyrideInputState::JustPressed {
-        player.slide = Some(PlayerSlide {
-            direction: PlayerSlideDirection::Right,
-            timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
-        });
+        // player.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
+        //     direction: PlayerSlideDirection::Right,
+        //     timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
+        // }));
+        player.control_loss = Some(PlayerControlLoss::Crash(PlayerCrash {
+            resetting: false,
+            pre_reset_timer: Timer::from_seconds(1.0, false),
+            sprite_cycle_idx: 0,
+            sprite_cycle_timer: Timer::from_seconds(
+                PlayerCrash::next_sprite_cycle_time(racer.speed),
+                false,
+            ),
+        }));
     }
-    // let mut racer = racer_query
-    //     .get_mut(player.racer_ent)
-    //     .expect(PLAYER_NOT_INIT);
 
     // if input.left == JoyrideInputState::JustPressed {
     //     racer.turn_rate = f32::max(racer.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
