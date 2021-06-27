@@ -19,6 +19,17 @@ struct PlayerFrameTurn {
     right: bool,
 }
 
+struct PlayerSlide {
+    direction: PlayerSlideDirection,
+    timer: Timer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlayerSlideDirection {
+    Left,
+    Right,
+}
+
 const TURN_BUFFER_SIZE: usize = 3;
 
 const OFFROAD_SHAKE_OFFSETS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
@@ -29,10 +40,13 @@ pub struct Player {
     offroad_shake_index: usize,
     offroad_shake_timer: Timer,
 
+    slide: Option<PlayerSlide>,
+
     racer_ent: Entity,
 
     brake_light_ent: Entity,
     sand_blast_ent: Entity,
+    smoke_ent: Entity,
     turbo_flare_ent: Entity,
 }
 
@@ -77,6 +91,25 @@ fn make_sand_blast_overlay(racer: Entity) -> RacerOverlay {
     )
 }
 
+const SMOKE_OFFSETS: [OverlayOffsets; 1] = [OverlayOffsets([
+    (0, -16),
+    (-8, -16),
+    (-14, -16),
+    (-22, -16),
+])];
+fn make_smoke_overlay(racer: Entity) -> RacerOverlay {
+    RacerOverlay::new(
+        racer,
+        1,
+        2,
+        1,
+        false,
+        false,
+        &SMOKE_SPRITE_DESC,
+        &SMOKE_OFFSETS,
+    )
+}
+
 const TURBO_FLARE_OFFSETS: [OverlayOffsets; 1] =
     [OverlayOffsets([(0, -6), (2, -7), (2, -9), (-1, -10)])];
 fn make_turbo_flare_overlay(racer: Entity) -> RacerOverlay {
@@ -107,9 +140,13 @@ const PLAYER_OFFROAD_DRAG: f32 = 1.8;
 const PLAYER_TURN_ACCEL: f32 = 1200.0;
 const PLAYER_TURN_FALLOFF: f32 = 1800.0;
 
+const PLAYER_SLIDE_DURATION: f32 = 2.0 / 3.0;
+const PLAYER_SLIDE_STRENGTH: f32 = 300.0;
+
 const BRAKE_LIGHT_OFFSET_Z: f32 = 0.1;
 const TURBO_FLARE_OFFSET_Z: f32 = 0.15;
 const SAND_BLAST_OFFSET_Z: f32 = 0.2;
+const SMOKE_OFFSET_Z: f32 = 0.2;
 
 const PLAYER_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
@@ -122,6 +159,11 @@ const BRAKE_LIGHT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     columns: 4,
 };
 const SAND_BLAST_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
+    tile_size: 32,
+    rows: 1,
+    columns: 2,
+};
+const SMOKE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 32,
     rows: 1,
     columns: 2,
@@ -147,7 +189,8 @@ impl Systems {
             startup_player: SystemSet::new().with_system(startup_player.system()),
             update_player_driving: SystemSet::new()
                 .with_system(update_player_turning.system())
-                .with_system(update_player_speed.system()),
+                .with_system(update_player_speed.system())
+                .with_system(test_modify_player.system()),
             update_player_road_position: SystemSet::new()
                 .with_system(update_player_road_position.system()),
             update_player_visuals: SystemSet::new()
@@ -155,7 +198,8 @@ impl Systems {
                 .with_system(update_player_bike_sprites.system())
                 .with_system(update_brake_lights.system())
                 .with_system(update_sand_blasts.system())
-                .with_system(update_turbo_flare.system()),
+                .with_system(update_turbo_flare.system())
+                .with_system(update_smoke.system()),
         }
     }
 }
@@ -174,6 +218,8 @@ fn startup_player(
     let sand_blast_atlas = SAND_BLAST_SPRITE_DESC.make_atlas(sand_blast_tex);
     let turbo_flare_tex = asset_server.load("textures/turbo_flare_atlas.png");
     let turbo_flare_atlas = TURBO_FLARE_SPRITE_DESC.make_atlas(turbo_flare_tex);
+    let smoke_tex = asset_server.load("textures/smoke_atlas.png");
+    let smoke_atlas = SMOKE_SPRITE_DESC.make_atlas(smoke_tex);
 
     let racer_ent = make_racer(
         &mut commands,
@@ -204,6 +250,17 @@ fn startup_player(
         .insert(LocalVisible::default())
         .id();
 
+    let smoke_ent = commands
+        .spawn_bundle(SpriteSheetBundle {
+            texture_atlas: texture_atlases.add(smoke_atlas),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, SMOKE_OFFSET_Z)),
+            ..Default::default()
+        })
+        .insert(Timer::from_seconds(0.1, true))
+        .insert(make_smoke_overlay(racer_ent))
+        .insert(LocalVisible::default())
+        .id();
+
     let turbo_flare_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: texture_atlases.add(turbo_flare_atlas),
@@ -215,9 +272,12 @@ fn startup_player(
         .insert(LocalVisible::default())
         .id();
 
-    commands
-        .entity(racer_ent)
-        .push_children(&[brake_light_ent, sand_blast_ent, turbo_flare_ent]);
+    commands.entity(racer_ent).push_children(&[
+        brake_light_ent,
+        sand_blast_ent,
+        smoke_ent,
+        turbo_flare_ent,
+    ]);
 
     commands.insert_resource(Player {
         turn_buffer: [PlayerFrameTurn {
@@ -226,9 +286,11 @@ fn startup_player(
         }; TURN_BUFFER_SIZE],
         offroad_shake_timer: Timer::from_seconds(1.0 / 15.0, true),
         offroad_shake_index: 0,
+        slide: None,
         racer_ent,
         brake_light_ent,
         sand_blast_ent,
+        smoke_ent,
         turbo_flare_ent,
     })
 }
@@ -264,6 +326,29 @@ fn update_player_turning(
     } else if racer.turn_rate > 0.0 {
         racer.turn_rate = f32::max(0.0, racer.turn_rate - turn_falloff);
     }
+
+    if let Some(slide) = player.slide.as_mut() {
+        racer.turn_rate = if slide.direction == PlayerSlideDirection::Left {
+            PLAYER_SLIDE_STRENGTH
+        } else {
+            -PLAYER_SLIDE_STRENGTH
+        };
+
+        if slide
+            .timer
+            .tick(Duration::from_secs_f32(TIME_STEP))
+            .just_finished()
+        {
+            player.slide = None;
+            racer.turn_rate = 0.0;
+
+            // Clear the turn buffer
+            for b in player.turn_buffer.as_mut() {
+                b.left = false;
+                b.right = false;
+            }
+        }
+    }
 }
 
 fn update_player_speed(
@@ -280,7 +365,9 @@ fn update_player_speed(
     let is_accelerating = input.accel.is_pressed();
     let is_turboing = input.turbo.is_pressed() && racer.speed >= PLAYER_MAX_NORMAL_SPEED;
 
-    if is_braking {
+    if player.slide.is_some() {
+        speed_change -= PLAYER_COAST_DRAG;
+    } else if is_braking {
         speed_change -= PLAYER_BRAKE_DRAG;
     } else if is_turboing {
         speed_change += PLAYER_SPEED_TURBO_ACCEL;
@@ -319,8 +406,13 @@ fn update_player_road_position(
     let racer = racers.get(player.racer_ent).expect(PLAYER_NOT_INIT);
     road_dyn.advance_z(racer.speed * TIME_STEP);
 
+    let turn_rate = if player.slide.is_some() {
+        -racer.turn_rate
+    } else {
+        racer.turn_rate
+    };
     let mut road_x = road_dyn.x_offset;
-    road_x -= racer.turn_rate * TIME_STEP;
+    road_x -= turn_rate * TIME_STEP;
 
     // Apply the road's curvature against the player
     road_x += road_dyn.get_road_x_pull(0.0, racer.speed) * TIME_STEP;
@@ -412,6 +504,28 @@ fn update_sand_blasts(
     overlay.is_visible = is_offroad;
 }
 
+fn update_smoke(
+    player: Res<Player>,
+    road_static: Res<RoadStatic>,
+    road_dyn: Res<RoadDynamic>,
+    mut overlay_query: Query<(&mut Timer, &mut RacerOverlay)>,
+) {
+    let (mut timer, mut overlay) = overlay_query
+        .get_mut(player.smoke_ent)
+        .expect(PLAYER_NOT_INIT);
+
+    let is_active = player.slide.is_some() && !is_offroad(&road_static, &road_dyn);
+    if is_active {
+        timer.tick(Duration::from_secs_f32(TIME_STEP));
+        if timer.just_finished() {
+            overlay.sprite_cycle_pos =
+                (overlay.sprite_cycle_pos + 1) % overlay.get_sprite_cycle_length()
+        }
+    }
+
+    overlay.is_visible = is_active;
+}
+
 fn update_turbo_flare(
     player: Res<Player>,
     input: Res<JoyrideInput>,
@@ -443,17 +557,23 @@ fn update_turbo_flare(
 
 fn test_modify_player(
     input: Res<JoyrideInput>,
-    player: Res<Player>,
-    mut racer_query: Query<&mut Racer>,
+    mut player: ResMut<Player>,
+    //mut racer_query: Query<&mut Racer>,
 ) {
-    let mut racer = racer_query
-        .get_mut(player.racer_ent)
-        .expect(PLAYER_NOT_INIT);
+    if input.debug == JoyrideInputState::JustPressed {
+        player.slide = Some(PlayerSlide {
+            direction: PlayerSlideDirection::Right,
+            timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
+        });
+    }
+    // let mut racer = racer_query
+    //     .get_mut(player.racer_ent)
+    //     .expect(PLAYER_NOT_INIT);
 
-    if input.left == JoyrideInputState::JustPressed {
-        racer.turn_rate = f32::max(racer.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
-    }
-    if input.right == JoyrideInputState::JustPressed {
-        racer.turn_rate = f32::min(racer.turn_rate + MAX_TURN_RATE / 4.0, MAX_TURN_RATE);
-    }
+    // if input.left == JoyrideInputState::JustPressed {
+    //     racer.turn_rate = f32::max(racer.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
+    // }
+    // if input.right == JoyrideInputState::JustPressed {
+    //     racer.turn_rate = f32::min(racer.turn_rate + MAX_TURN_RATE / 4.0, MAX_TURN_RATE);
+    // }
 }
