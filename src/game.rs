@@ -18,6 +18,7 @@ enum GameSystemLabels {
     UpdatePlayerDriving,
     UpdatePlayerRoadPosition,
     UpdateRoad,
+    UpdateRivals,
 }
 
 struct StageBuilder<'a, S: StageLabel + Clone> {
@@ -95,6 +96,7 @@ pub fn setup_game(app: &mut AppBuilder) {
         ],
     );
 
+    // TODO: Enforce that systems are labeled and added in game loop order sequence
     let mut builder = StageBuilder::new(CoreStage::Update, app);
 
     builder.add_systems_after(None, vec![road_systems.test_curve_road]);
@@ -133,9 +135,15 @@ pub fn setup_game(app: &mut AppBuilder) {
 
     builder.add_systems_after(
         Some(GameSystemLabels::UpdateRoad),
+        vec![rival_systems
+            .update_rivals
+            .label(GameSystemLabels::UpdateRivals)],
+    );
+
+    builder.add_systems_after(
+        Some(GameSystemLabels::UpdateRivals),
         vec![
             skybox_systems.update_skybox,
-            rival_systems.update_rivals,
             racer_systems.update_racers,
             road_systems.draw_road,
         ],

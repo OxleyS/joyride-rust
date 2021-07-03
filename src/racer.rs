@@ -10,7 +10,8 @@ use crate::{
 
 pub struct OverlayOffsets(pub [(i32, i32); NUM_TURN_LEVELS]);
 
-const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
+const NUM_TIRE_LODS: u8 = 5;
+const TIRE_OFFSETS: [OverlayOffsets; NUM_TIRE_LODS as usize * 2] = [
     // LOD level 0
     // Up cycle
     OverlayOffsets([(0, -16), (-1, -16), (-3, -17), (-10, -19)]),
@@ -18,9 +19,9 @@ const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     OverlayOffsets([(0, -19), (-2, -19), (-6, -21), (-12, -21)]),
     // LOD level 1
     // Up cycle
-    OverlayOffsets([(0, -18), (0, -17), (-3, -17), (-8, -21)]),
+    OverlayOffsets([(1, -19), (0, -17), (-3, -17), (-8, -21)]),
     // Down cycle
-    OverlayOffsets([(0, -21), (-2, -22), (-5, -22), (-12, -24)]),
+    OverlayOffsets([(1, -22), (-2, -22), (-5, -22), (-12, -24)]),
     // LOD level 2
     // Up cycle
     OverlayOffsets([(0, -21), (-1, -21), (-2, -22), (-6, -22)]),
@@ -30,9 +31,21 @@ const TIRE_OFFSETS: [OverlayOffsets; NUM_RACER_LODS * 2] = [
     // Up cycle
     OverlayOffsets([(1, -23), (1, -23), (-4, -24), (-7, -24)]),
     OverlayOffsets([(1, -24), (0, -25), (-5, -26), (-9, -26)]),
+    // LOD level 4
+    // Up cycle
+    OverlayOffsets([(1, -25), (2, -23), (-3, -24), (-6, -24)]),
+    OverlayOffsets([(1, -26), (1, -25), (-4, -26), (-8, -26)]),
 ];
 fn make_tire_overlay() -> RacerOverlay {
-    RacerOverlay::new(2, 1, 4, true, true, &TIRE_SPRITE_DESC, &TIRE_OFFSETS)
+    RacerOverlay::new(
+        2,
+        1,
+        NUM_TIRE_LODS,
+        true,
+        true,
+        &TIRE_SPRITE_DESC,
+        &TIRE_OFFSETS,
+    )
 }
 
 pub struct Tire {}
@@ -40,7 +53,7 @@ pub struct Tire {}
 const TIRE_Z_OFFSET: f32 = 0.1;
 const TIRE_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 16,
-    rows: 4,
+    rows: 5,
     columns: 4,
 };
 
@@ -113,7 +126,6 @@ impl RacerOverlay {
 const RACER_BASE_Z: f32 = 300.0;
 pub const RACER_MAX_SPEED: f32 = 10.43;
 pub const MAX_TURN_RATE: f32 = 400.0;
-const NUM_RACER_LODS: usize = 4;
 pub const NUM_TURN_LEVELS: usize = 4;
 
 pub struct RacerAssets {

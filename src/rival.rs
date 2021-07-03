@@ -36,11 +36,11 @@ impl Systems {
 
 const RIVAL_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
-    rows: 6,
+    rows: 8,
     columns: 8,
 };
 
-const LOD_SCALE_MAPPING: [f32; 5] = [0.83, 0.67, 0.59, 0.34, 0.16];
+const LOD_SCALE_MAPPING: [f32; 7] = [0.83, 0.67, 0.55, 0.42, 0.30, 0.22, 0.16];
 
 fn startup_rival(
     mut commands: Commands,

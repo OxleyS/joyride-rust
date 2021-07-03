@@ -79,6 +79,13 @@ impl Player {
     pub fn get_racer_ent(&self) -> Entity {
         self.racer_ent
     }
+
+    fn reset_turn_buffer(&mut self) {
+        for b in self.turn_buffer.as_mut() {
+            b.left = false;
+            b.right = false;
+        }
+    }
 }
 
 // No cycle or LOD to worry about, unlike tires
@@ -165,8 +172,8 @@ const SMOKE_OFFSET_Z: f32 = 0.2;
 
 const PLAYER_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 64,
-    rows: 3,
-    columns: 6,
+    rows: 4,
+    columns: 4,
 };
 const BRAKE_LIGHT_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 16,
@@ -358,12 +365,7 @@ fn update_player_turning(
             {
                 player.control_loss = None;
                 racer.turn_rate = 0.0;
-
-                // Clear the turn buffer
-                for b in player.turn_buffer.as_mut() {
-                    b.left = false;
-                    b.right = false;
-                }
+                player.reset_turn_buffer();
             }
         }
         Some(PlayerControlLoss::Crash(_)) => {
@@ -421,7 +423,6 @@ fn update_player_speed(
     }
 
     racer.speed = f32::clamp(
-        // TODO: Applying delta time here may be a problem for boost end clamping
         racer.speed + (speed_change * TIME_STEP),
         if is_crashing { 0.0 } else { PLAYER_MIN_SPEED },
         PLAYER_MAX_TURBO_SPEED,
@@ -495,7 +496,7 @@ fn update_player_bike_sprites(
     match player.control_loss.as_ref() {
         Some(PlayerControlLoss::Crash(crash)) => {
             tire_visible = false;
-            sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(crash.sprite_cycle_idx, 2);
+            sprite.index = PLAYER_SPRITE_DESC.get_sprite_index(crash.sprite_cycle_idx, 3);
             sprite.flip_x = false;
         }
         _ => {
@@ -623,7 +624,6 @@ fn update_player_crash(
         _ => return,
     };
 
-    // TODO: Can we just put the player component directly on the racer ent instead?
     let (mut racer, mut visible) = racer_query
         .get_mut(player.racer_ent)
         .expect(PLAYER_NOT_INIT);
@@ -636,7 +636,7 @@ fn update_player_crash(
             player.control_loss = None;
             racer.speed = PLAYER_MIN_SPEED;
             visible.is_visible = true;
-            // TODO: Reset turn buffer
+            player.reset_turn_buffer();
         } else {
             road_dyn.x_offset -= PLAYER_CRASH_RESET_SPEED * TIME_STEP;
             visible.is_visible = false;
