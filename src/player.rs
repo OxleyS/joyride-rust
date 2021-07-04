@@ -25,7 +25,7 @@ struct PlayerSlide {
 }
 
 struct PlayerCrash {
-    sprite_cycle_timer: Timer,
+    sprite_cycle_timer: Option<Timer>,
     sprite_cycle_idx: u32,
 
     resetting: bool,
@@ -50,7 +50,7 @@ enum PlayerControlLoss {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum PlayerSlideDirection {
+pub enum PlayerSlideDirection {
     Left,
     Right,
 }
@@ -78,6 +78,22 @@ pub struct Player {
 impl Player {
     pub fn get_racer_ent(&self) -> Entity {
         self.racer_ent
+    }
+
+    pub fn crash(&mut self) {
+        self.control_loss = Some(PlayerControlLoss::Crash(PlayerCrash {
+            resetting: false,
+            pre_reset_timer: Timer::from_seconds(1.0, false),
+            sprite_cycle_idx: 0,
+            sprite_cycle_timer: None,
+        }));
+    }
+
+    pub fn slide(&mut self, direction: PlayerSlideDirection) {
+        self.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
+            direction,
+            timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
+        }));
     }
 
     fn reset_turn_buffer(&mut self) {
@@ -249,6 +265,7 @@ fn startup_player(
         racer_assets,
         texture_atlases.add(bike_atlas),
         0.5,
+        0.0,
     );
 
     let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_OFFSET_Z));
@@ -649,15 +666,18 @@ fn update_player_crash(
                 crash.resetting = true;
             }
         } else {
-            crash.sprite_cycle_timer.tick(tick_duration);
-            if crash.sprite_cycle_timer.just_finished() {
+            //let timer: &mut Timer =
+            let next_cycle_time =
+                Duration::from_secs_f32(PlayerCrash::next_sprite_cycle_time(racer.speed));
+            let cycle_timer = crash
+                .sprite_cycle_timer
+                .get_or_insert(Timer::new(next_cycle_time, false));
+
+            cycle_timer.tick(tick_duration);
+            if cycle_timer.just_finished() {
                 crash.sprite_cycle_idx = (crash.sprite_cycle_idx + 1) % 4;
-                crash
-                    .sprite_cycle_timer
-                    .set_duration(Duration::from_secs_f32(
-                        PlayerCrash::next_sprite_cycle_time(racer.speed),
-                    ));
-                crash.sprite_cycle_timer.reset();
+                cycle_timer.set_duration(next_cycle_time);
+                cycle_timer.reset();
             }
         }
     }
@@ -677,15 +697,7 @@ fn test_modify_player(
         //     direction: PlayerSlideDirection::Right,
         //     timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
         // }));
-        player.control_loss = Some(PlayerControlLoss::Crash(PlayerCrash {
-            resetting: false,
-            pre_reset_timer: Timer::from_seconds(1.0, false),
-            sprite_cycle_idx: 0,
-            sprite_cycle_timer: Timer::from_seconds(
-                PlayerCrash::next_sprite_cycle_time(racer.speed),
-                false,
-            ),
-        }));
+        player.crash();
     }
 
     // if input.left == JoyrideInputState::JustPressed {

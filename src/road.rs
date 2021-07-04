@@ -1,4 +1,5 @@
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
+use crate::road_object::RoadObjectType;
 use crate::{boxed_array, joyride};
 use bevy::{
     core::AsBytes,
@@ -90,6 +91,7 @@ struct RoadColors {
 struct RoadSegment {
     curve: f32,
     hill: f32,
+    spawn_object_type: Option<RoadObjectType>,
 }
 
 pub struct RoadStatic {
@@ -98,6 +100,12 @@ pub struct RoadStatic {
     scale_map: Box<[f32; ROAD_DISTANCE]>,
     colors: RoadColors,
     road_sprite: Entity,
+}
+
+impl RoadStatic {
+    pub fn z_map(&self) -> &[f32; ROAD_DISTANCE] {
+        &self.z_map
+    }
 }
 
 // TODO: Can we encapsulate better?
@@ -311,10 +319,12 @@ fn build_road_dynamic() -> RoadDynamic {
             RoadSegment {
                 curve: 0.0,
                 hill: 0.0,
+                spawn_object_type: None,
             },
             RoadSegment {
                 curve: 0.0,
                 hill: 0.0,
+                spawn_object_type: None,
             },
         ]),
     }

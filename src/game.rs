@@ -1,4 +1,4 @@
-use crate::{joyride, player, racer, rival, road, skybox, text};
+use crate::{joyride, player, racer, rival, road, road_object, skybox, text};
 use bevy::prelude::*;
 
 #[derive(StageLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
@@ -7,7 +7,9 @@ enum StartupStageLabels {
 }
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
-enum StartupSystemLabels {}
+enum StartupSystemLabels {
+    StartupRoad,
+}
 
 #[derive(StageLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 enum GameStageLabels {}
@@ -19,6 +21,7 @@ enum GameSystemLabels {
     UpdatePlayerRoadPosition,
     UpdateRoad,
     UpdateRivals,
+    UpdateRoadObjects,
 }
 
 struct StageBuilder<'a, S: StageLabel + Clone> {
@@ -75,6 +78,7 @@ pub fn setup_game(app: &mut AppBuilder) {
     let text_systems = text::Systems::new();
     let rival_systems = rival::Systems::new();
     let racer_systems = racer::Systems::new();
+    let road_object_systems = road_object::Systems::new();
 
     app.add_startup_stage_before(
         StartupStage::Startup,
@@ -84,16 +88,26 @@ pub fn setup_game(app: &mut AppBuilder) {
 
     StageBuilder::new(StartupStageLabels::StartupRacerSystems, app)
         .add_startup_systems_after(None, vec![racer_systems.startup_racer]);
-    StageBuilder::new(StartupStage::Startup, app).add_startup_systems_after(
+
+    let mut startup_builder = StageBuilder::new(StartupStage::Startup, app);
+
+    startup_builder.add_startup_systems_after(
         None,
         vec![
             joyride_systems.startup_joyride,
             player_systems.startup_player,
-            road_systems.startup_road,
+            road_systems
+                .startup_road
+                .label(StartupSystemLabels::StartupRoad),
             rival_systems.startup_rivals,
             text_systems.startup_text,
             skybox_systems.startup_skybox,
         ],
+    );
+
+    startup_builder.add_startup_systems_after(
+        Some(StartupSystemLabels::StartupRoad),
+        vec![road_object_systems.startup_road_objects],
     );
 
     // TODO: Enforce that systems are labeled and added in game loop order sequence
@@ -127,10 +141,7 @@ pub fn setup_game(app: &mut AppBuilder) {
 
     builder.add_systems_after(
         Some(GameSystemLabels::UpdatePlayerRoadPosition),
-        vec![
-            player_systems.update_player_visuals,
-            road_systems.update_road.label(GameSystemLabels::UpdateRoad),
-        ],
+        vec![road_systems.update_road.label(GameSystemLabels::UpdateRoad)],
     );
 
     builder.add_systems_after(
@@ -142,9 +153,18 @@ pub fn setup_game(app: &mut AppBuilder) {
 
     builder.add_systems_after(
         Some(GameSystemLabels::UpdateRivals),
+        vec![road_object_systems
+            .manage_road_objects
+            .label(GameSystemLabels::UpdateRoadObjects)],
+    );
+
+    builder.add_systems_after(
+        Some(GameSystemLabels::UpdateRoadObjects),
         vec![
             skybox_systems.update_skybox,
             racer_systems.update_racers,
+            player_systems.update_player_visuals,
+            rival_systems.update_rival_visuals,
             road_systems.draw_road,
         ],
     );

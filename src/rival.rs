@@ -3,9 +3,9 @@ use easy_cast::*;
 
 use crate::{
     joyride::TIME_STEP,
-    player::Player,
     racer::{get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS},
     road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
+    road_object::{Collider, CollisionAction, RoadObject},
     util::{LocalVisible, SpriteGridDesc},
 };
 
@@ -16,20 +16,20 @@ enum RivalPalette {
 
 struct Rival {
     palette: RivalPalette,
-    x_pos: f32,
-    z_pos: f32,
 }
 
 pub struct Systems {
     pub startup_rivals: SystemSet,
     pub update_rivals: SystemSet,
+    pub update_rival_visuals: SystemSet,
 }
 
 impl Systems {
     pub fn new() -> Self {
         Self {
-            startup_rivals: SystemSet::new().with_system(startup_rival.system()),
-            update_rivals: SystemSet::new().with_system(update_rival.system()),
+            startup_rivals: SystemSet::new().with_system(startup_rivals.system()),
+            update_rivals: SystemSet::new().with_system(update_rivals.system()),
+            update_rival_visuals: SystemSet::new().with_system(update_rival_visuals.system()),
         }
     }
 }
@@ -42,7 +42,7 @@ const RIVAL_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const LOD_SCALE_MAPPING: [f32; 7] = [0.83, 0.67, 0.55, 0.42, 0.30, 0.22, 0.16];
 
-fn startup_rival(
+fn startup_rivals(
     mut commands: Commands,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     racer_assets: Res<RacerAssets>,
@@ -56,41 +56,52 @@ fn startup_rival(
         racer_assets,
         texture_atlases.add(bike_atlas),
         0.0,
+        2.0,
     );
 
-    commands.entity(racer_ent).insert(Rival {
-        palette: RivalPalette::Red,
-        x_pos: 50.0,
-        z_pos: 1.5,
-    });
+    commands
+        .entity(racer_ent)
+        .insert(Rival {
+            palette: RivalPalette::Red,
+        })
+        .insert(RoadObject {
+            x_pos: 50.0,
+            z_pos: 1.5,
+            collider1: Some(Collider {
+                left: -15.0,
+                right: 15.0,
+            }),
+            collider2: None,
+            collision_action: CollisionAction::SlidePlayer,
+        });
 }
 
-fn update_rival(
-    mut query: QuerySet<(
-        Query<(
-            &mut Rival,
-            &mut Racer,
-            &mut TextureAtlasSprite,
-            &mut LocalVisible,
-            &mut Transform,
-        )>,
-        Query<&Racer>,
+fn update_rivals(
+    mut query: Query<(&mut RoadObject, &mut Racer, With<Rival>)>,
+    road_dyn: Res<RoadDynamic>,
+) {
+    for (mut obj, mut racer, _) in query.iter_mut() {
+        obj.z_pos += racer.speed * TIME_STEP;
+
+        // TODO: Lerp here for smooth turning?
+        racer.turn_rate = road_dyn.get_road_x_pull(obj.z_pos, racer.speed);
+    }
+}
+
+fn update_rival_visuals(
+    mut query: Query<(
+        &Rival,
+        &RoadObject,
+        &mut Racer,
+        &mut TextureAtlasSprite,
+        &mut LocalVisible,
+        &mut Transform,
     )>,
-    player: Res<Player>,
     road_static: Res<RoadStatic>,
     road_dyn: Res<RoadDynamic>,
 ) {
-    let player_speed = query
-        .q1()
-        .get(player.get_racer_ent())
-        .map_or(0.0, |r| r.speed);
-
-    for (mut rival, mut racer, mut sprite, mut visible, mut xform) in query.q0_mut().iter_mut() {
-        racer.speed = 2.0; // TODO: Temporary
-        rival.z_pos += (racer.speed - player_speed) * TIME_STEP;
-
-        let draw_params =
-            get_draw_params_on_road(&road_static, &road_dyn, rival.x_pos, rival.z_pos);
+    for (rival, obj, mut racer, mut sprite, mut visible, mut xform) in query.iter_mut() {
+        let draw_params = get_draw_params_on_road(&road_static, &road_dyn, obj.x_pos, obj.z_pos);
         if let Some(draw_params) = draw_params {
             xform.translation.x = draw_params.draw_pos.0;
             xform.translation.y =
@@ -101,9 +112,6 @@ fn update_rival(
                 .unwrap_or_else(|x| x)
                 .cast();
             racer.lod_level = lod_level;
-
-            // TODO: Lerp here for smooth turning
-            racer.turn_rate = road_dyn.get_road_x_pull(rival.z_pos, racer.speed);
 
             let sprite_params = get_turning_sprite_desc(racer.turn_rate);
             let sprite_x = match rival.palette {

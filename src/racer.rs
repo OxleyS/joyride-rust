@@ -175,6 +175,7 @@ pub fn make_racer(
     racer_assets: Res<RacerAssets>,
     bike_atlas: Handle<TextureAtlas>,
     z_bias: f32,
+    speed: f32,
 ) -> Entity {
     let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_Z_OFFSET));
     let tire_ent = commands
@@ -197,7 +198,7 @@ pub fn make_racer(
         .insert(Racer {
             lod_level: 0,
             turn_rate: 0.0,
-            speed: 0.0,
+            speed,
             z_bias,
             tire_ent,
         })

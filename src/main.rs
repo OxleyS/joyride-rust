@@ -18,6 +18,7 @@ mod player;
 mod racer;
 mod rival;
 mod road;
+mod road_object;
 mod skybox;
 mod text;
 mod util;
