@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::render::RenderSystem;
+use debug::LoopSectionTimer;
 use easy_cast::*;
 use fixed_framerate::FixedFramerate;
 
@@ -37,6 +38,7 @@ fn main() {
             ..Default::default()
         })
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
+        .insert_resource(LoopSectionTimer::new())
         .add_plugins(DefaultPlugins)
         .add_system_to_stage(
             CoreStage::PostUpdate,

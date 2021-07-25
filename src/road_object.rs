@@ -294,6 +294,8 @@ fn update_road_object_visuals(
     query.for_each_mut(|(selector, object, mut sprite, mut visible, mut xform)| {
         let draw_params =
             get_draw_params_on_road(&road_static, &road_dyn, object.x_pos, object.z_pos);
+        let mut is_visible = false;
+
         if let Some(draw_params) = draw_params {
             xform.translation.x = draw_params.draw_pos.0;
             xform.translation.y =
@@ -308,9 +310,11 @@ fn update_road_object_visuals(
             let sprite_y: u32 = lod_level;
             sprite.index = ROAD_OBJ_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
 
-            visible.is_visible = true;
-        } else {
-            visible.is_visible = false;
+            is_visible = true;
+        }
+
+        if visible.is_visible != is_visible {
+            visible.is_visible = is_visible;
         }
     });
 }

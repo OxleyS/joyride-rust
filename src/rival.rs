@@ -114,6 +114,8 @@ fn update_rival_visuals(
 ) {
     for (rival, obj, mut racer, mut sprite, mut visible, mut xform) in query.iter_mut() {
         let draw_params = get_draw_params_on_road(&road_static, &road_dyn, obj.x_pos, obj.z_pos);
+
+        let mut is_visible = false;
         if let Some(draw_params) = draw_params {
             xform.translation.x = draw_params.draw_pos.0;
             xform.translation.y =
@@ -133,9 +135,11 @@ fn update_rival_visuals(
             sprite.flip_x = sprite_params.flip_x;
             sprite.index = RIVAL_SPRITE_DESC.get_sprite_index(sprite_x, lod_level.cast());
 
-            visible.is_visible = true;
-        } else {
-            visible.is_visible = false;
+            is_visible = true;
+        }
+
+        if visible.is_visible != is_visible {
+            visible.is_visible = is_visible;
         }
     }
 }

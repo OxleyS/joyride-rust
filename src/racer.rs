@@ -240,10 +240,14 @@ fn update_racer_overlays(
             .map_or((0.0, 0), |r| (r.turn_rate, r.lod_level));
 
         if lod_level >= overlay.num_lod_levels {
-            visible.is_visible = false;
+            if visible.is_visible {
+                visible.is_visible = false;
+            }
             continue;
         }
-        visible.is_visible = overlay.is_visible;
+        if visible.is_visible != overlay.is_visible {
+            visible.is_visible = overlay.is_visible;
+        }
 
         let RacerSpriteParams { turn_idx, flip_x } = get_turning_sprite_desc(turn_rate);
 

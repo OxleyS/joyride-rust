@@ -13,7 +13,9 @@ enum StartupSystemLabels {
 }
 
 #[derive(StageLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
-enum GameStageLabels {}
+enum GameStageLabels {
+    PostSpawn,
+}
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 enum GameSystemLabels {
@@ -23,6 +25,7 @@ enum GameSystemLabels {
     UpdateRoad,
     UpdateRivals,
     UpdateRoadObjects,
+    UpdateOverlayState,
 }
 
 struct StageBuilder<'a, S: StageLabel + Clone> {
@@ -166,13 +169,30 @@ pub fn setup_game(app: &mut AppBuilder) {
             .label(GameSystemLabels::UpdateRoadObjects)],
     );
 
-    builder.add_systems_after(
-        Some(GameSystemLabels::UpdateRoadObjects),
+    app.add_stage_before(
+        CoreStage::PostUpdate,
+        GameStageLabels::PostSpawn,
+        SystemStage::parallel(),
+    );
+    let mut post_builder = StageBuilder::new(GameStageLabels::PostSpawn, app);
+
+    post_builder.add_systems_after(
+        None,
+        vec![
+            player_systems
+                .update_player_visuals
+                .label(GameSystemLabels::UpdateOverlayState),
+            rival_systems
+                .update_rival_visuals
+                .label(GameSystemLabels::UpdateOverlayState),
+        ],
+    );
+
+    post_builder.add_systems_after(
+        Some(GameSystemLabels::UpdateOverlayState),
         vec![
             skybox_systems.update_skybox,
             racer_systems.update_racers,
-            player_systems.update_player_visuals,
-            rival_systems.update_rival_visuals,
             road_object_systems.update_road_object_visuals,
             road_systems.draw_road,
             debug_systems.update_debug_vis,

@@ -1,6 +1,9 @@
-use bevy::{ecs::system::EntityCommands, prelude::*};
+use bevy::{ecs::system::EntityCommands, prelude::*, utils::Instant};
 
-use crate::util::LocalVisible;
+use crate::{
+    joyride::{JoyrideInput, JoyrideInputState},
+    util::LocalVisible,
+};
 
 pub struct Systems {
     pub startup_debug: SystemSet,
@@ -47,10 +50,17 @@ fn startup_debug(mut commands: Commands, mut materials: ResMut<Assets<ColorMater
 
 fn update_debug_vis(
     coll_query: Query<(&mut LocalVisible, With<DebugCollision>)>,
-    debug_cfg: Res<DebugConfig>,
+    mut debug_cfg: ResMut<DebugConfig>,
+    input: Res<JoyrideInput>,
 ) {
+    if input.debug == JoyrideInputState::JustPressed {
+        debug_cfg.debug_collision = !debug_cfg.debug_collision;
+    }
+
     coll_query.for_each_mut(|(mut local_vis, _)| {
-        local_vis.is_visible = debug_cfg.debug_collision;
+        if local_vis.is_visible != debug_cfg.debug_collision {
+            local_vis.is_visible = debug_cfg.debug_collision;
+        }
     });
 }
 
@@ -83,4 +93,28 @@ fn spawn_debug_box<'a, 'b>(
 
     ent_cmd.insert(LocalVisible::default());
     ent_cmd
+}
+
+pub struct LoopSectionTimer {
+    start_time: Instant,
+}
+
+impl LoopSectionTimer {
+    pub fn new() -> Self {
+        Self {
+            start_time: Instant::now(),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn loop_section_timer_start(mut loop_section_timer: ResMut<LoopSectionTimer>) {
+    loop_section_timer.start_time = Instant::now();
+}
+
+#[allow(dead_code)]
+pub fn loop_section_timer_end(loop_section_timer: Res<LoopSectionTimer>) {
+    let total_time = Instant::now().duration_since(loop_section_timer.start_time);
+    let secs = total_time.as_secs_f64();
+    println!("{}", secs);
 }

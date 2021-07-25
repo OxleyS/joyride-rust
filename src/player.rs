@@ -676,15 +676,20 @@ fn update_player_crash(
 
     if crash.resetting {
         let remaining = road_dyn.x_offset / TIME_STEP;
+        let mut is_visible = false;
+
         if remaining <= PLAYER_CRASH_RESET_SPEED {
             road_dyn.x_offset = 0.0;
             player.control_loss = None;
             racer.speed = PLAYER_MIN_SPEED;
-            visible.is_visible = true;
+            is_visible = true;
             player.reset_turn_buffer();
         } else {
             road_dyn.x_offset -= PLAYER_CRASH_RESET_SPEED * TIME_STEP;
-            visible.is_visible = false;
+        }
+
+        if visible.is_visible != is_visible {
+            visible.is_visible = is_visible;
         }
     } else {
         if racer.speed <= 0.0 {
@@ -720,13 +725,13 @@ fn test_modify_player(
         .get_mut(player.racer_ent)
         .expect(PLAYER_NOT_INIT);
 
-    if input.debug == JoyrideInputState::JustPressed {
-        // player.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
-        //     direction: PlayerSlideDirection::Right,
-        //     timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
-        // }));
-        player.crash();
-    }
+    //if input.debug == JoyrideInputState::JustPressed {
+    // player.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
+    //     direction: PlayerSlideDirection::Right,
+    //     timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
+    // }));
+    //player.crash();
+    //}
 
     // if input.left == JoyrideInputState::JustPressed {
     //     racer.turn_rate = f32::max(racer.turn_rate - MAX_TURN_RATE / 4.0, -MAX_TURN_RATE);
