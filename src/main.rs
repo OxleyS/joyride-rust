@@ -11,6 +11,7 @@ use crate::joyride::TIME_STEP;
 const WINDOW_WIDTH: f32 = 1280.0;
 const WINDOW_HEIGHT: f32 = 960.0;
 
+mod debug;
 mod fixed_framerate;
 mod game;
 mod joyride;

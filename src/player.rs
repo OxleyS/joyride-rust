@@ -4,12 +4,14 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
+    debug::{spawn_collision_debug_box, DebugAssets},
     joyride::{JoyrideInput, JoyrideInputState, FIELD_WIDTH, TIME_STEP},
     racer::{
         get_turning_sprite_desc, make_racer, OverlayOffsets, Racer, RacerAssets, RacerOverlay,
         RacerSpriteParams, Tire, MAX_TURN_RATE, RACER_MAX_SPEED,
     },
     road::{is_offroad, RoadDynamic, RoadStatic},
+    road_object::{PLAYER_COLLISION_WIDTH, ROAD_OBJ_BASE_Z},
     util::{LocalVisible, SpriteGridDesc},
 };
 
@@ -81,19 +83,38 @@ impl Player {
     }
 
     pub fn crash(&mut self) {
-        self.control_loss = Some(PlayerControlLoss::Crash(PlayerCrash {
-            resetting: false,
-            pre_reset_timer: Timer::from_seconds(1.0, false),
-            sprite_cycle_idx: 0,
-            sprite_cycle_timer: None,
-        }));
+        match self.control_loss {
+            // Don't override an existing crash, it will reset sprite cycles and stuff
+            Some(PlayerControlLoss::Crash(_)) => return,
+            _ => {
+                self.control_loss = Some(PlayerControlLoss::Crash(PlayerCrash {
+                    resetting: false,
+                    pre_reset_timer: Timer::from_seconds(1.0, false),
+                    sprite_cycle_idx: 0,
+                    sprite_cycle_timer: None,
+                }));
+            }
+        }
     }
 
     pub fn slide(&mut self, direction: PlayerSlideDirection) {
-        self.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
-            direction,
-            timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
-        }));
+        match self.control_loss {
+            // Slides do not override a crash
+            Some(PlayerControlLoss::Crash(_)) => return,
+            _ => {
+                self.control_loss = Some(PlayerControlLoss::Slide(PlayerSlide {
+                    direction,
+                    timer: Timer::from_seconds(PLAYER_SLIDE_DURATION, false),
+                }));
+            }
+        }
+    }
+
+    fn is_crashing(&self) -> bool {
+        match &self.control_loss {
+            Some(PlayerControlLoss::Crash(_)) => true,
+            _ => false,
+        }
     }
 
     fn reset_turn_buffer(&mut self) {
@@ -248,6 +269,7 @@ fn startup_player(
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     racer_assets: Res<RacerAssets>,
     asset_server: Res<AssetServer>,
+    debug_assets: Res<DebugAssets>,
 ) {
     let bike_tex = asset_server.load("textures/player_atlas.png");
     let bike_atlas = PLAYER_SPRITE_DESC.make_atlas(bike_tex);
@@ -264,8 +286,8 @@ fn startup_player(
         &mut commands,
         racer_assets,
         texture_atlases.add(bike_atlas),
-        0.5,
         0.0,
+        Vec3::new(0.0, 0.0, ROAD_OBJ_BASE_Z - 0.5),
     );
 
     let brake_light_xform = Transform::from_translation(Vec3::new(0.0, 0.0, BRAKE_LIGHT_OFFSET_Z));
@@ -312,11 +334,19 @@ fn startup_player(
         .insert(LocalVisible::default())
         .id();
 
+    let debug_box = spawn_collision_debug_box(
+        &mut commands,
+        &debug_assets,
+        Vec2::new(0.0, -f32::conv(PLAYER_SPRITE_DESC.tile_size) * 0.5),
+        Vec2::new(PLAYER_COLLISION_WIDTH, 1.0),
+    );
+
     commands.entity(racer_ent).push_children(&[
         brake_light_ent,
         sand_blast_ent,
         smoke_ent,
         turbo_flare_ent,
+        debug_box,
     ]);
 
     commands.insert_resource(Player {
@@ -405,10 +435,7 @@ fn update_player_speed(
     let is_braking = input.brake.is_pressed();
     let is_accelerating = input.accel.is_pressed();
     let is_turboing = input.turbo.is_pressed() && racer.speed >= PLAYER_MAX_NORMAL_SPEED;
-    let is_crashing = match &player.control_loss {
-        Some(PlayerControlLoss::Crash(_)) => true,
-        _ => false,
-    };
+    let is_crashing = player.is_crashing();
 
     if player.control_loss.is_some() {
         speed_change -= if is_crashing {
@@ -480,7 +507,7 @@ fn update_player_shake(
 ) {
     let mut xform = xforms.get_mut(player.racer_ent).expect(PLAYER_NOT_INIT);
 
-    let xform_offset = if is_offroad(&road_static, &road_dyn) {
+    let xform_offset = if is_offroad(&road_static, &road_dyn) && !player.is_crashing() {
         player
             .offroad_shake_timer
             .tick(Duration::from_secs_f32(TIME_STEP));
@@ -550,7 +577,7 @@ fn update_brake_lights(
         .get_mut(player.brake_light_ent)
         .expect(PLAYER_NOT_INIT);
 
-    overlay.is_visible = input.brake.is_pressed();
+    overlay.is_visible = !player.is_crashing() && input.brake.is_pressed();
 }
 
 fn update_sand_blasts(
@@ -570,7 +597,7 @@ fn update_sand_blasts(
         }
     }
 
-    overlay.is_visible = is_offroad;
+    overlay.is_visible = !player.is_crashing() && is_offroad;
 }
 
 fn update_smoke(
@@ -616,6 +643,7 @@ fn update_turbo_flare(
     if is_offroad(&road_static, &road_dyn)
         || !input.turbo.is_pressed()
         || racer.speed <= PLAYER_MAX_NORMAL_SPEED
+        || player.is_crashing()
     {
         overlay.is_visible = false;
         return;

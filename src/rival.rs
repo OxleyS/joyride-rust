@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use easy_cast::*;
 
 use crate::{
+    debug::{spawn_collision_debug_box, DebugAssets},
     joyride::TIME_STEP,
     racer::{get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS},
     road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
@@ -47,6 +48,7 @@ fn startup_rivals(
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     racer_assets: Res<RacerAssets>,
     asset_server: Res<AssetServer>,
+    debug_assets: Res<DebugAssets>,
 ) {
     let bike_tex = asset_server.load("textures/rival_atlas.png");
     let bike_atlas = RIVAL_SPRITE_DESC.make_atlas(bike_tex);
@@ -55,8 +57,17 @@ fn startup_rivals(
         &mut commands,
         racer_assets,
         texture_atlases.add(bike_atlas),
-        0.0,
         2.0,
+        Vec3::default(),
+    );
+
+    let coll_left = -15.0;
+    let coll_right = 15.0;
+    let debug_box = spawn_collision_debug_box(
+        &mut commands,
+        &debug_assets,
+        Vec2::new(0.0, -f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5),
+        Vec2::new(coll_right - coll_left, 1.0),
     );
 
     commands
@@ -68,12 +79,13 @@ fn startup_rivals(
             x_pos: 50.0,
             z_pos: 1.5,
             collider1: Some(Collider {
-                left: -15.0,
-                right: 15.0,
+                left: coll_left,
+                right: coll_right,
             }),
             collider2: None,
             collision_action: CollisionAction::SlidePlayer,
-        });
+        })
+        .push_children(&[debug_box]);
 }
 
 fn update_rivals(

@@ -1,9 +1,10 @@
-use crate::{joyride, player, racer, rival, road, road_object, skybox, text};
+use crate::{debug, joyride, player, racer, rival, road, road_object, skybox, text};
 use bevy::prelude::*;
 
 #[derive(StageLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 enum StartupStageLabels {
     StartupRacerSystems,
+    SpawnInitialRoadObjects,
 }
 
 #[derive(SystemLabel, PartialEq, Eq, Clone, Copy, Hash, Debug)]
@@ -79,6 +80,7 @@ pub fn setup_game(app: &mut AppBuilder) {
     let rival_systems = rival::Systems::new();
     let racer_systems = racer::Systems::new();
     let road_object_systems = road_object::Systems::new();
+    let debug_systems = debug::Systems::new();
 
     app.add_startup_stage_before(
         StartupStage::Startup,
@@ -86,8 +88,10 @@ pub fn setup_game(app: &mut AppBuilder) {
         SystemStage::parallel(),
     );
 
-    StageBuilder::new(StartupStageLabels::StartupRacerSystems, app)
-        .add_startup_systems_after(None, vec![racer_systems.startup_racer]);
+    StageBuilder::new(StartupStageLabels::StartupRacerSystems, app).add_startup_systems_after(
+        None,
+        vec![racer_systems.startup_racer, debug_systems.startup_debug],
+    );
 
     let mut startup_builder = StageBuilder::new(StartupStage::Startup, app);
 
@@ -105,10 +109,14 @@ pub fn setup_game(app: &mut AppBuilder) {
         ],
     );
 
-    startup_builder.add_startup_systems_after(
-        Some(StartupSystemLabels::StartupRoad),
-        vec![road_object_systems.startup_road_objects],
+    app.add_startup_stage_after(
+        StartupStage::Startup,
+        StartupStageLabels::SpawnInitialRoadObjects,
+        SystemStage::parallel(),
     );
+
+    let mut startup_builder = StageBuilder::new(StartupStageLabels::SpawnInitialRoadObjects, app);
+    startup_builder.add_startup_systems_after(None, vec![road_object_systems.startup_road_objects]);
 
     // TODO: Enforce that systems are labeled and added in game loop order sequence
     let mut builder = StageBuilder::new(CoreStage::Update, app);
@@ -165,7 +173,9 @@ pub fn setup_game(app: &mut AppBuilder) {
             racer_systems.update_racers,
             player_systems.update_player_visuals,
             rival_systems.update_rival_visuals,
+            road_object_systems.update_road_object_visuals,
             road_systems.draw_road,
+            debug_systems.update_debug_vis,
         ],
     );
 }

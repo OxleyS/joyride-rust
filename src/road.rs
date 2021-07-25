@@ -1,5 +1,6 @@
+use crate::debug::DebugConfig;
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
-use crate::road_object::RoadObjectType;
+use crate::road_object::{RoadObjectType, RoadSide};
 use crate::{boxed_array, joyride};
 use bevy::{
     core::AsBytes,
@@ -53,7 +54,7 @@ const CAMERA_HEIGHT: f32 = 75.0;
 const COLOR_SWITCH_Z_INTERVAL: f32 = 0.5;
 
 // The length (in Z) of a single road segment
-const SEGMENT_LENGTH: f32 = 15.0;
+pub const SEGMENT_LENGTH: f32 = 15.0;
 
 // The strength at which road curvature modifies the X positions of objects
 const ROAD_CURVE_PULL_SCALAR: f32 = 60.0;
@@ -63,9 +64,6 @@ const CENTER_LINE_WIDTH: f32 = 2.0;
 const RUMBLE_STRIP_WIDTH: f32 = 20.0;
 
 const ROAD_NOT_INIT: &str = "Road was not initialized";
-
-// Debug flags
-const DEBUG_VIS_SEGMENTS: bool = true;
 
 #[derive(Clone, Copy)]
 struct QuadraticCoefficients {
@@ -87,11 +85,17 @@ struct RoadColors {
     center_line: u32, // Shifts to match the pavement color
 }
 
-#[derive(Clone)]
-struct RoadSegment {
-    curve: f32,
-    hill: f32,
-    spawn_object_type: Option<RoadObjectType>,
+#[derive(Debug, Clone)]
+pub struct RoadSegment {
+    pub curve: f32,
+    pub hill: f32,
+    pub spawn_object_type: Option<RoadObjectType>,
+}
+
+pub struct RoadPoint {
+    pub seg_idx: usize,
+    pub seg_pos: f32,
+    pub seg: RoadSegment,
 }
 
 pub struct RoadStatic {
@@ -105,6 +109,10 @@ pub struct RoadStatic {
 impl RoadStatic {
     pub fn z_map(&self) -> &[f32; ROAD_DISTANCE] {
         &self.z_map
+    }
+
+    pub fn scale_map(&self) -> &[f32; ROAD_DISTANCE] {
+        &self.scale_map
     }
 }
 
@@ -137,15 +145,37 @@ pub struct RoadDynamic {
 }
 
 impl RoadDynamic {
-    pub fn advance_z(&mut self, advance_amount_z: f32) {
-        assert!(advance_amount_z >= 0.0, "Can only move forward on the road");
-        self.seg_pos += advance_amount_z;
+    pub fn advance_z(&mut self, advance_z: f32) {
+        assert!(advance_z >= 0.0, "Can only move forward on the road");
 
-        let num_advance_segs = (self.seg_pos / SEGMENT_LENGTH).floor();
-        self.seg_idx += usize::conv_trunc(num_advance_segs);
-        self.seg_pos -= num_advance_segs * SEGMENT_LENGTH;
+        let (idx, pos) = self.calc_advanced_position(advance_z);
+        self.seg_idx = idx;
+        self.seg_pos = pos;
+        self.z_offset = (self.z_offset + advance_z) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+    }
 
-        self.z_offset = (self.z_offset + advance_amount_z) % (COLOR_SWITCH_Z_INTERVAL * 2.0);
+    fn calc_advanced_position(&self, advance_z: f32) -> (usize, f32) {
+        let advanced_pos = self.seg_pos + advance_z;
+        let num_advance_segs = (advanced_pos / SEGMENT_LENGTH).floor();
+
+        let idx = self.seg_idx + usize::conv_trunc(num_advance_segs);
+        let pos = advanced_pos - (num_advance_segs * SEGMENT_LENGTH);
+        assert!(pos >= 0.0, "Segment position cannot be negative");
+
+        (idx, pos)
+    }
+
+    pub fn query_road_point(&self, z_offset: f32) -> RoadPoint {
+        let (idx, pos) = self.calc_advanced_position(z_offset);
+        RoadPoint {
+            seg_idx: idx,
+            seg_pos: pos,
+            seg: get_bounded_seg(&self.segs, idx),
+        }
+    }
+
+    pub fn get_bounded_seg(&self, idx: usize) -> RoadSegment {
+        get_bounded_seg(&self.segs, idx)
     }
 
     pub fn get_seg_curvature(&self, pos_offset: f32) -> f32 {
@@ -202,7 +232,7 @@ pub fn get_draw_params_on_road(
     if y_map_idx > road_dyn.draw_height {
         return None;
     }
-    let x_offset = converge_x(x_pos, map_idx);
+    let x_offset = x_pos * scale;
 
     Some(DrawParams {
         scale,
@@ -324,7 +354,7 @@ fn build_road_dynamic() -> RoadDynamic {
             RoadSegment {
                 curve: 0.0,
                 hill: 0.0,
-                spawn_object_type: None,
+                spawn_object_type: Some(RoadObjectType::RoadSigns(RoadSide::Left)),
             },
         ]),
     }
@@ -358,7 +388,8 @@ fn test_curve_road(mut road_dyn: ResMut<RoadDynamic>, input: Res<Input<KeyCode>>
     }
 }
 
-fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
+// TODO: Return a ref instead
+pub fn get_bounded_seg(segs: &[RoadSegment], idx: usize) -> RoadSegment {
     let actual_idx = usize::clamp(idx, 0, segs.len() - 1);
     return segs[actual_idx].clone();
 }
@@ -471,6 +502,7 @@ fn render_road(
     road_dyn: Res<RoadDynamic>,
     mut road_draw: Local<RoadDrawing>,
     mut textures: ResMut<Assets<Texture>>,
+    debug_cfg: Res<DebugConfig>,
 ) {
     let field_width: usize = FIELD_WIDTH.cast();
     let colors = &road_static.colors;
@@ -495,7 +527,7 @@ fn render_road(
         let road_z = road_static.z_map[map_idx];
         let road_scale = road_static.scale_map[map_idx];
 
-        let is_seg_boundary = if DEBUG_VIS_SEGMENTS && map_idx > 0 {
+        let is_seg_boundary = if debug_cfg.debug_road_seg_boundaries && map_idx > 0 {
             let seg_num = usize::conv_trunc((road_z + road_dyn.seg_pos) / SEGMENT_LENGTH);
             let last_seg_num = usize::conv_trunc(
                 (road_static.z_map[map_idx - 1] + road_dyn.seg_pos) / SEGMENT_LENGTH,

@@ -123,7 +123,6 @@ impl RacerOverlay {
     }
 }
 
-const RACER_BASE_Z: f32 = 300.0;
 pub const RACER_MAX_SPEED: f32 = 10.43;
 pub const MAX_TURN_RATE: f32 = 400.0;
 pub const NUM_TURN_LEVELS: usize = 4;
@@ -135,7 +134,6 @@ pub struct RacerAssets {
 pub struct Racer {
     pub turn_rate: f32,
     pub speed: f32,
-    pub z_bias: f32,
     pub lod_level: u8,
     pub tire_ent: Entity,
 }
@@ -151,8 +149,7 @@ impl Systems {
             startup_racer: SystemSet::new().with_system(startup_racer.system()),
             update_racers: SystemSet::new()
                 .with_system(update_tires.system())
-                .with_system(update_racer_overlays.system())
-                .with_system(update_racer_z.system()),
+                .with_system(update_racer_overlays.system()),
         }
     }
 }
@@ -174,8 +171,8 @@ pub fn make_racer(
     commands: &mut Commands,
     racer_assets: Res<RacerAssets>,
     bike_atlas: Handle<TextureAtlas>,
-    z_bias: f32,
     speed: f32,
+    translation: Vec3,
 ) -> Entity {
     let tire_xform = Transform::from_translation(Vec3::new(0.0, 0.0, TIRE_Z_OFFSET));
     let tire_ent = commands
@@ -193,13 +190,13 @@ pub fn make_racer(
     let racer_ent = commands
         .spawn_bundle(SpriteSheetBundle {
             texture_atlas: bike_atlas.clone(),
+            transform: Transform::from_translation(translation),
             ..Default::default()
         })
         .insert(Racer {
             lod_level: 0,
             turn_rate: 0.0,
             speed,
-            z_bias,
             tire_ent,
         })
         .insert(LocalVisible::default())
@@ -278,12 +275,6 @@ fn update_racer_overlays(
     }
 }
 
-fn update_racer_z(mut query: Query<(&Racer, &mut Transform)>) {
-    for (racer, mut xform) in query.iter_mut() {
-        xform.translation.z = RACER_BASE_Z - xform.translation.y + racer.z_bias;
-    }
-}
-
 pub struct RacerSpriteParams {
     pub turn_idx: u32,
     pub flip_x: bool,
@@ -301,5 +292,5 @@ pub fn get_turning_sprite_desc(turn_rate: f32) -> RacerSpriteParams {
 }
 
 fn get_tire_cycle_seconds(speed: f32) -> f32 {
-    f32::clamp((RACER_MAX_SPEED / speed) / 16.0, 0.02, 4.0)
+    f32::clamp((RACER_MAX_SPEED / speed) / 16.0, 0.02, 0.5)
 }
