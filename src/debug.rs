@@ -49,10 +49,6 @@ fn update_debug_vis(
     coll_query: Query<(&mut LocalVisible, With<DebugCollision>)>,
     debug_cfg: Res<DebugConfig>,
 ) {
-    if !debug_cfg.is_changed() {
-        return;
-    }
-
     coll_query.for_each_mut(|(mut local_vis, _)| {
         local_vis.is_visible = debug_cfg.debug_collision;
     });
