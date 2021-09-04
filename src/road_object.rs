@@ -16,12 +16,12 @@ pub const ROAD_OBJ_BASE_Z: f32 = 300.0;
 
 const ROAD_OBJ_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
     tile_size: 128,
-    rows: 8,
-    columns: 4,
+    rows: 10,
+    columns: 3,
 };
 
 // TODO: Share this with Rival?
-const LOD_SCALE_MAPPING: [f32; 7] = [0.83, 0.67, 0.55, 0.42, 0.30, 0.22, 0.16];
+const LOD_SCALE_MAPPING: [f32; 9] = [0.83, 0.67, 0.55, 0.42, 0.30, 0.26, 0.16, 0.09, 0.06];
 
 const ROAD_SIGN_Z_OFFSETS: [f32; 3] = [
     SEGMENT_LENGTH * 0.35,
@@ -47,9 +47,16 @@ pub enum RoadSide {
     Right,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum RoadSignType {
+    Oxman,
+    BeatDown,
+    Turn(bool),
+}
+
 #[derive(Debug, Clone)]
 pub enum RoadObjectType {
-    RoadSigns(RoadSide),
+    RoadSigns(RoadSignType, RoadSide),
 }
 
 pub struct RoadObject {
@@ -64,8 +71,10 @@ struct RoadObjectAssets {
     sprite_atlas: Handle<TextureAtlas>,
 }
 
+#[derive(Debug, Clone)]
 struct RoadObjectSpriteSelector {
     sprite_set_idx: u32,
+    flip: bool,
 }
 
 struct Spawner {
@@ -167,7 +176,22 @@ fn spawn_objects(
     commands: &mut Commands,
 ) {
     match obj_type {
-        &RoadObjectType::RoadSigns(road_side) => {
+        &RoadObjectType::RoadSigns(sign_type, road_side) => {
+            let selector: RoadObjectSpriteSelector = match sign_type {
+                RoadSignType::Oxman => RoadObjectSpriteSelector {
+                    sprite_set_idx: 0,
+                    flip: false,
+                },
+                RoadSignType::BeatDown => RoadObjectSpriteSelector {
+                    sprite_set_idx: 1,
+                    flip: false,
+                },
+                RoadSignType::Turn(flip) => RoadObjectSpriteSelector {
+                    sprite_set_idx: 2,
+                    flip,
+                },
+            };
+
             let x_pos = match road_side {
                 RoadSide::Left => -204.0,
                 RoadSide::Right => 204.0,
@@ -200,7 +224,7 @@ fn spawn_objects(
                         ..Default::default()
                     })
                     .insert(road_obj)
-                    .insert(RoadObjectSpriteSelector { sprite_set_idx: 0 })
+                    .insert(selector.clone())
                     .insert(LocalVisible::default())
                     .push_children(&[debug_box]);
             }
@@ -297,9 +321,9 @@ fn update_road_object_visuals(
         let mut is_visible = false;
 
         if let Some(draw_params) = draw_params {
-            xform.translation.x = draw_params.draw_pos.0;
+            xform.translation.x = draw_params.draw_pos.x;
             xform.translation.y =
-                draw_params.draw_pos.1 + (f32::conv(ROAD_OBJ_SPRITE_DESC.tile_size) * 0.5);
+                draw_params.draw_pos.y + (f32::conv(ROAD_OBJ_SPRITE_DESC.tile_size) * 0.5);
 
             let lod_level: u32 = LOD_SCALE_MAPPING
                 .binary_search_by(|x| draw_params.scale.partial_cmp(&x).unwrap())
@@ -309,6 +333,7 @@ fn update_road_object_visuals(
             let sprite_x: u32 = selector.sprite_set_idx;
             let sprite_y: u32 = lod_level;
             sprite.index = ROAD_OBJ_SPRITE_DESC.get_sprite_index(sprite_x, sprite_y);
+            sprite.flip_x = selector.flip;
 
             is_visible = true;
         }

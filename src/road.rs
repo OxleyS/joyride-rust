@@ -1,6 +1,6 @@
 use crate::debug::DebugConfig;
 use crate::joyride::{FIELD_HEIGHT, FIELD_WIDTH};
-use crate::road_object::{RoadObjectType, RoadSide};
+use crate::road_object::{RoadObjectType, RoadSide, RoadSignType};
 use crate::{boxed_array, joyride};
 use bevy::{
     core::AsBytes,
@@ -199,7 +199,7 @@ pub fn is_offroad(road_static: &RoadStatic, road_dyn: &RoadDynamic) -> bool {
 
 pub struct DrawParams {
     pub scale: f32,
-    pub draw_pos: (f32, f32),
+    pub draw_pos: Vec2,
 }
 
 pub fn get_draw_params_on_road(
@@ -236,7 +236,7 @@ pub fn get_draw_params_on_road(
 
     Some(DrawParams {
         scale,
-        draw_pos: ((road_dyn.x_map[map_idx] + x_offset), f32::conv(y_map_idx)),
+        draw_pos: Vec2::new(road_dyn.x_map[map_idx] + x_offset, f32::conv(y_map_idx)),
     })
 }
 
@@ -354,7 +354,10 @@ fn build_road_dynamic() -> RoadDynamic {
             RoadSegment {
                 curve: 0.0,
                 hill: 0.0,
-                spawn_object_type: Some(RoadObjectType::RoadSigns(RoadSide::Left)),
+                spawn_object_type: Some(RoadObjectType::RoadSigns(
+                    RoadSignType::Turn(false),
+                    RoadSide::Left,
+                )),
             },
         ]),
     }

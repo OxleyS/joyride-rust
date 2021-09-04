@@ -117,9 +117,9 @@ fn update_rival_visuals(
 
         let mut is_visible = false;
         if let Some(draw_params) = draw_params {
-            xform.translation.x = draw_params.draw_pos.0;
+            xform.translation.x = draw_params.draw_pos.x;
             xform.translation.y =
-                draw_params.draw_pos.1 + (f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5);
+                draw_params.draw_pos.y + (f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5);
 
             let lod_level: u8 = LOD_SCALE_MAPPING
                 .binary_search_by(|x| draw_params.scale.partial_cmp(&x).unwrap())
