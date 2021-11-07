@@ -1,12 +1,14 @@
 use bevy::prelude::*;
 use easy_cast::*;
+use rand::Rng;
 
 use crate::{
     debug::{spawn_collision_debug_box, DebugAssets},
     joyride::TIME_STEP,
     player::{Player, PlayerSlideDirection},
-    racer::Racer,
-    road::{get_draw_params_on_road, RoadDynamic, RoadStatic, SEGMENT_LENGTH},
+    racer::{Racer, RacerAssets},
+    rival::{spawn_rival, Rival, RivalAssets, RivalPalette},
+    road::{get_draw_params_on_road, RoadDynamic, RoadStatic, PAVEMENT_WIDTH, SEGMENT_LENGTH},
     util::{LocalVisible, SpriteGridDesc},
 };
 
@@ -28,6 +30,11 @@ const ROAD_SIGN_Z_OFFSETS: [f32; 3] = [
     SEGMENT_LENGTH * 0.5,
     SEGMENT_LENGTH * 0.65,
 ];
+
+const MAX_SPAWNED_RIVALS: usize = 2;
+const RIVAL_SPAWN_CHANCE: f64 = 0.6;
+const RIVAL_DESPAWN_SCALAR: f32 = 2.5;
+const SPAWNED_RIVAL_SPEED: f32 = 4.0;
 
 #[derive(Debug, Clone)]
 pub struct Collider {
@@ -79,6 +86,7 @@ struct RoadObjectSpriteSelector {
 
 struct Spawner {
     last_seg_idx: usize,
+    segs_without_rival: usize,
 }
 
 pub struct Systems {
@@ -93,6 +101,7 @@ impl Systems {
             startup_road_objects: SystemSet::new().with_system(startup_road_objects.system()),
             manage_road_objects: SystemSet::new()
                 .with_system(check_passed_objects.system().label("check_passed_objects"))
+                .with_system(check_far_out_rivals.system().after("check_passed_objects"))
                 .with_system(spawn_segment_objects.system().after("check_passed_objects"))
                 .with_system(update_road_object_z.system().after("check_passed_objects")),
             update_road_object_visuals: SystemSet::new()
@@ -137,16 +146,21 @@ fn startup_road_objects(
     commands.insert_resource(assets);
     commands.insert_resource(Spawner {
         last_seg_idx: road_point.seg_idx,
+        segs_without_rival: 0,
     });
 }
 
+// TODO: Consolidate asset resources?
 fn spawn_segment_objects(
     mut commands: Commands,
     road_static: Res<RoadStatic>,
     road_dyn: Res<RoadDynamic>,
     mut spawner: ResMut<Spawner>,
-    assets: Res<RoadObjectAssets>,
+    obj_assets: Res<RoadObjectAssets>,
+    racer_assets: Res<RacerAssets>,
+    rival_assets: Res<RivalAssets>,
     debug_assets: Res<DebugAssets>,
+    rival_query: Query<&Rival>,
 ) {
     let z_map = road_static.z_map();
     let far_z = z_map[z_map.len() - 1];
@@ -159,11 +173,47 @@ fn spawn_segment_objects(
             spawn_objects(
                 spawn_type,
                 seg_start_z,
-                &assets,
+                &obj_assets,
                 &debug_assets,
                 &mut commands,
             );
         }
+
+        let num_rivals = rival_query.iter().count();
+        if num_rivals < MAX_SPAWNED_RIVALS {
+            let mut rng = rand::thread_rng();
+
+            let should_spawn_rival = rng.gen_bool(RIVAL_SPAWN_CHANCE);
+            if should_spawn_rival || spawner.segs_without_rival > 1 {
+                let pavement_width = PAVEMENT_WIDTH as i32;
+                let x_pos = f32::conv(rng.gen_range(-pavement_width..pavement_width));
+
+                let z_seg_scalar: f32 = rng.gen_range(0.0..(2.0 / 3.0)) + 1.0;
+                let z_pos = z_seg_scalar * SEGMENT_LENGTH;
+
+                let rival_palette = if rng.gen_bool(0.5) {
+                    RivalPalette::Green
+                } else {
+                    RivalPalette::Red
+                };
+
+                spawn_rival(
+                    &mut commands,
+                    x_pos,
+                    z_pos,
+                    SPAWNED_RIVAL_SPEED,
+                    rival_palette,
+                    &rival_assets,
+                    &racer_assets,
+                    &debug_assets,
+                );
+
+                spawner.segs_without_rival = 0;
+            } else {
+                spawner.segs_without_rival += 1;
+            }
+        }
+
         spawner.last_seg_idx = road_point.seg_idx;
     }
 }
@@ -271,6 +321,14 @@ fn check_passed_objects(
         }
 
         commands.entity(ent).despawn_recursive();
+    }
+}
+
+fn check_far_out_rivals(mut commands: Commands, obj_query: Query<(&RoadObject, Entity, &Rival)>) {
+    for (obj, ent, _) in obj_query.iter() {
+        if obj.z_pos > (SEGMENT_LENGTH * RIVAL_DESPAWN_SCALAR) {
+            commands.entity(ent).despawn_recursive();
+        }
     }
 }
 

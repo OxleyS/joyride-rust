@@ -4,19 +4,24 @@ use easy_cast::*;
 use crate::{
     debug::{spawn_collision_debug_box, DebugAssets},
     joyride::TIME_STEP,
+    player::PLAYER_MAX_NORMAL_SPEED,
     racer::{get_turning_sprite_desc, make_racer, Racer, RacerAssets, NUM_TURN_LEVELS},
     road::{get_draw_params_on_road, RoadDynamic, RoadStatic},
     road_object::{Collider, CollisionAction, RoadObject},
     util::{LocalVisible, SpriteGridDesc},
 };
 
-enum RivalPalette {
+pub enum RivalPalette {
     Green,
     Red,
 }
 
-struct Rival {
+pub struct Rival {
     palette: RivalPalette,
+}
+
+pub struct RivalAssets {
+    bike_atlas: Handle<TextureAtlas>,
 }
 
 pub struct Systems {
@@ -43,28 +48,28 @@ const RIVAL_SPRITE_DESC: SpriteGridDesc = SpriteGridDesc {
 
 const LOD_SCALE_MAPPING: [f32; 7] = [0.83, 0.67, 0.55, 0.42, 0.30, 0.22, 0.16];
 
-fn startup_rivals(
-    mut commands: Commands,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    racer_assets: Res<RacerAssets>,
-    asset_server: Res<AssetServer>,
-    debug_assets: Res<DebugAssets>,
+pub fn spawn_rival(
+    commands: &mut Commands,
+    x_pos: f32,
+    z_pos: f32,
+    speed: f32,
+    palette: RivalPalette,
+    rival_assets: &RivalAssets,
+    racer_assets: &RacerAssets,
+    debug_assets: &DebugAssets,
 ) {
-    let bike_tex = asset_server.load("textures/rival_atlas.png");
-    let bike_atlas = RIVAL_SPRITE_DESC.make_atlas(bike_tex);
-
     let racer_ent = make_racer(
-        &mut commands,
+        commands,
         racer_assets,
-        texture_atlases.add(bike_atlas),
-        2.0,
+        rival_assets.bike_atlas.clone(),
+        speed,
         Vec3::default(),
     );
 
     let coll_left = -15.0;
     let coll_right = 15.0;
     let debug_box = spawn_collision_debug_box(
-        &mut commands,
+        commands,
         &debug_assets,
         Vec2::new(0.0, -f32::conv(RIVAL_SPRITE_DESC.tile_size) * 0.5),
         Vec2::new(coll_right - coll_left, 1.0),
@@ -72,12 +77,10 @@ fn startup_rivals(
 
     commands
         .entity(racer_ent)
-        .insert(Rival {
-            palette: RivalPalette::Red,
-        })
+        .insert(Rival { palette })
         .insert(RoadObject {
-            x_pos: 50.0,
-            z_pos: 1.5,
+            x_pos,
+            z_pos,
             collider1: Some(Collider {
                 left: coll_left,
                 right: coll_right,
@@ -88,6 +91,21 @@ fn startup_rivals(
         .push_children(&[debug_box]);
 }
 
+fn startup_rivals(
+    mut commands: Commands,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    asset_server: Res<AssetServer>,
+) {
+    let bike_tex = asset_server.load("textures/rival_atlas.png");
+    let bike_atlas = RIVAL_SPRITE_DESC.make_atlas(bike_tex);
+    let bike_atlas_handle = texture_atlases.add(bike_atlas);
+
+    let rival_assets = RivalAssets {
+        bike_atlas: bike_atlas_handle,
+    };
+    commands.insert_resource(rival_assets);
+}
+
 fn update_rivals(
     mut query: Query<(&mut RoadObject, &mut Racer, With<Rival>)>,
     road_dyn: Res<RoadDynamic>,
@@ -95,8 +113,9 @@ fn update_rivals(
     for (mut obj, mut racer, _) in query.iter_mut() {
         obj.z_pos += racer.speed * TIME_STEP;
 
-        // TODO: Lerp here for smooth turning?
-        racer.turn_rate = road_dyn.get_road_x_pull(obj.z_pos, racer.speed);
+        // Racers go significantly slower than the player, but we want their turn rates to be similar,
+        // so we fudge their speed
+        racer.turn_rate = road_dyn.get_road_x_pull(obj.z_pos, PLAYER_MAX_NORMAL_SPEED);
     }
 }
 

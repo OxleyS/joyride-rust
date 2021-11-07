@@ -59,7 +59,7 @@ pub const SEGMENT_LENGTH: f32 = 15.0;
 // The strength at which road curvature modifies the X positions of objects
 const ROAD_CURVE_PULL_SCALAR: f32 = 60.0;
 
-const PAVEMENT_WIDTH: f32 = 125.0;
+pub const PAVEMENT_WIDTH: f32 = 125.0;
 const CENTER_LINE_WIDTH: f32 = 2.0;
 const RUMBLE_STRIP_WIDTH: f32 = 20.0;
 

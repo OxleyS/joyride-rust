@@ -284,7 +284,7 @@ fn startup_player(
 
     let racer_ent = make_racer(
         &mut commands,
-        racer_assets,
+        &racer_assets,
         texture_atlases.add(bike_atlas),
         0.0,
         Vec3::new(0.0, 0.0, ROAD_OBJ_BASE_Z - 0.5),

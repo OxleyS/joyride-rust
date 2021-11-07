@@ -44,7 +44,7 @@ fn startup_debug(mut commands: Commands, mut materials: ResMut<Assets<ColorMater
     });
     commands.insert_resource(DebugConfig {
         debug_collision: false,
-        debug_road_seg_boundaries: false,
+        debug_road_seg_boundaries: true,
     });
 }
 

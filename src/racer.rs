@@ -169,7 +169,7 @@ fn startup_racer(
 
 pub fn make_racer(
     commands: &mut Commands,
-    racer_assets: Res<RacerAssets>,
+    racer_assets: &RacerAssets,
     bike_atlas: Handle<TextureAtlas>,
     speed: f32,
     translation: Vec3,

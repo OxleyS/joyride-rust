@@ -1859,6 +1859,7 @@ dependencies = [
  "bevy_webgl2",
  "easy-cast",
  "lebe",
+ "rand",
  "winit",
 ]
 
