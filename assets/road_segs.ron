@@ -1,0 +1,27 @@
+[
+    RoadSegment(
+        curve: 0.0,
+        hill: 0.0,
+        spawn_object_type: Some(RoadSigns(Turn(false), Left))
+    ),
+    RoadSegment(
+        curve: 0.5,
+        hill: 0.0,
+        spawn_object_type: None
+    ),
+    RoadSegment(
+        curve: 0.0,
+        hill: 0.0,
+        spawn_object_type: Some(RoadSigns(Turn(false), Left))
+    ),
+    // RoadSegment(
+    //     curve: 0.0,
+    //     hill: 0.0,
+    //     spawn_object_type: Some(RoadSigns(Turn(false), Left))
+    // ),
+    // RoadSegment(
+    //     curve: 0.5,
+    //     hill: 0.0,
+    //     spawn_object_type: Some(RoadSigns(Turn(false), Left))
+    // ),
+]

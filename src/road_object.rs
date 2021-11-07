@@ -48,20 +48,20 @@ pub enum CollisionAction {
     CrashPlayer,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub enum RoadSide {
     Left,
     Right,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub enum RoadSignType {
     Oxman,
     BeatDown,
     Turn(bool),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum RoadObjectType {
     RoadSigns(RoadSignType, RoadSide),
 }

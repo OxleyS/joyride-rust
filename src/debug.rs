@@ -28,6 +28,7 @@ pub struct DebugAssets {
 pub struct DebugConfig {
     pub debug_collision: bool,
     pub debug_road_seg_boundaries: bool,
+    pub debug_gameplay: bool,
 }
 
 fn startup_debug(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
@@ -44,7 +45,8 @@ fn startup_debug(mut commands: Commands, mut materials: ResMut<Assets<ColorMater
     });
     commands.insert_resource(DebugConfig {
         debug_collision: false,
-        debug_road_seg_boundaries: true,
+        debug_road_seg_boundaries: false,
+        debug_gameplay: false,
     });
 }
 

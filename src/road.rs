@@ -85,7 +85,7 @@ struct RoadColors {
     center_line: u32, // Shifts to match the pavement color
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct RoadSegment {
     pub curve: f32,
     pub hill: f32,
@@ -141,7 +141,7 @@ pub struct RoadDynamic {
     seg_pos: f32,
 
     // TODO: Move to static once we read segs from file
-    segs: Box<[RoadSegment]>,
+    segs: Vec<RoadSegment>,
 }
 
 impl RoadDynamic {
@@ -262,9 +262,10 @@ fn startup_road(
     mut commands: Commands,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    debug_config: Res<DebugConfig>,
 ) {
     let road_static = build_road_static(&mut commands, &mut textures, &mut materials);
-    let road_dynamic = build_road_dynamic();
+    let road_dynamic = build_road_dynamic(&debug_config);
 
     commands.insert_resource(road_static);
     commands.insert_resource(road_dynamic);
@@ -331,21 +332,14 @@ fn build_road_static(
     }
 }
 
-fn build_road_dynamic() -> RoadDynamic {
+fn build_road_dynamic(debug_cfg: &DebugConfig) -> RoadDynamic {
     let default_x = f32::conv(FIELD_WIDTH) * 0.5;
 
     let x_map = boxed_array![default_x; ROAD_DISTANCE];
     let y_map = boxed_array![0; MAX_ROAD_DRAW_HEIGHT];
 
-    RoadDynamic {
-        x_map,
-        y_map,
-        draw_height: ROAD_DISTANCE,
-        x_offset: 0.0,
-        z_offset: 0.0,
-        seg_idx: 0,
-        seg_pos: 0.0,
-        segs: Box::new([
+    let road_segs: Vec<RoadSegment> = if debug_cfg.debug_gameplay {
+        vec![
             RoadSegment {
                 curve: 0.0,
                 hill: 0.0,
@@ -359,7 +353,26 @@ fn build_road_dynamic() -> RoadDynamic {
                     RoadSide::Left,
                 )),
             },
-        ]),
+        ]
+    } else {
+        // TODO: Can we make this work with the AssetLoader? Async load would be a problem
+        let road_segs_file =
+            std::fs::File::open("assets/road_segs.ron").expect("Road segments file not found");
+        match ron::de::from_reader(road_segs_file) {
+            Ok(road_segs) => road_segs,
+            Err(e) => panic!("Failed to load road segments: {}", e),
+        }
+    };
+
+    RoadDynamic {
+        x_map,
+        y_map,
+        draw_height: ROAD_DISTANCE,
+        x_offset: 0.0,
+        z_offset: 0.0,
+        seg_idx: 0,
+        seg_pos: 0.0,
+        segs: road_segs,
     }
 }
 
@@ -418,6 +431,7 @@ fn map_road_quadratic<F: Fn(&RoadSegment) -> f32>(
         seg_pos += delta_z;
         if seg_pos > SEGMENT_LENGTH {
             seg_idx += 1;
+            seg_pos -= SEGMENT_LENGTH;
             cur_seg = get_bounded_seg(&segments, seg_idx);
         }
 

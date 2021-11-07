@@ -35,6 +35,8 @@ bevy = { version = "0.5.0", default-features = false }
 easy-cast = "0.4.4"
 lebe = "0.5.1"
 rand = "0.8"
+ron = "*"
+serde = { version = "*", features = ["serde_derive"] }
 bevy_webgl2 = { version = "0.5.0", optional = true }
 bevy_kira_audio = { version = "0.5.0" }
 winit = "0.24.0"
